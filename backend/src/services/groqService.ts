@@ -37,7 +37,7 @@ export async function callGroq(
             Authorization: `Bearer ${keys[i]}`
           },
           body: JSON.stringify({
-            model: 'qwen/qwen3.6-27b',
+            model: 'openai/gpt-oss-20b',
             messages,
             temperature: options?.temperature ?? 0.7,
             max_tokens: options?.maxTokens ?? 1024
