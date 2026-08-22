@@ -96,8 +96,19 @@ export function parseJsonResult<T>(text: string): T {
 }
 
 function cleanMarkdown(text: string): string {
+  let result = text;
+
+  // Strip reasoning/thinking blocks (qwen reasoning models output chain-of-thought before the answer)
+  // 1. XML-style <thinking>...</thinking> tags
+  result = result.replace(/<thinking>[\s\S]*?<\/thinking>/gi, '');
+  // 2. " thinking" ... "/thinking" markers
+  result = result.replace(/^\s*thinking\s*$/gim, '');
+  result = result.replace(/\/thinking/gi, '');
+  // 3. "Thinking Process:" section — strip from the header up to the actual answer
+  result = result.replace(/Thinking Process:[\s\S]*?(?=\n\n[A-Z]|\n[A-Z][a-z]+:|\nThank|\nHere|\nI'd|\nLet|\nGreat|\nBased|\nGood|\nThat|\nInteresting|\nCan I|\nWhat|\nHow|\nWhy|\nFirst|\nSpecifically|\nOnce|\nAlso|\nTell|\nWalk|\nWhere|\nWhich|\nWhen|\nDo|\nIs|\nAre|\nWill|\nShould|\nCould|\nWould|\nMy|\nOur|\nThe|\nA\s)/i, '');
+
   // First pass: strip matched markdown pairs
-  let result = text
+  result = result
     .replace(/\*\*(.+?)\*\*/g, '$1')
     .replace(/\*(.+?)\*/g, '$1')
     .replace(/__(.+?)__/g, '$1')
@@ -107,7 +118,7 @@ function cleanMarkdown(text: string): string {
   // Third pass: clean up list markers
   result = result.replace(/^\s*[-*+]\s/gm, '• ');
   result = result.replace(/^\s*\d+\.\s/gm, (m) => m.trim().replace('.', ' '));
-  return result;
+  return result.trim();
 }
 
 function generateMockResponse(messages: Array<{ role: string; content: string }>): string {
