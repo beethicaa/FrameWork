@@ -37,13 +37,13 @@ function getDifficultyInstructions(userRole: string, difficulty: string): string
 
 function createSystemPrompt(caseData: CaseData, userRole: string, difficulty: string): string {
   const roleLabel = userRole === 'interviewee' ? 'INTERVIEWER (evaluating a candidate)' : 'CANDIDATE (being interviewed)';
-  const dataLines = caseData.keyFacts.map((f, i) => `  [D${i + 1}] ${f}`).join('\n');
-  const hintLines = caseData.frameworkHints.map((h, i) => `  [F${i + 1}] ${h}`).join('\n');
+  const dataLines = caseData.keyFacts.map((f, i) => `   ${f}`).join('\n');
+  const hintLines = caseData.frameworkHints.map((h, i) => `   ${h}`).join('\n');
   const calcBlock = caseData.expectedCalculations
-    ? '\nExpected Calculations:\n' + caseData.expectedCalculations.map((c, i) => `  [C${i + 1}] ${c}`).join('\n')
+    ? '\nExpected Calculations:\n' + caseData.expectedCalculations.map((c, i) => `   ${c}`).join('\n')
     : '';
   const criteriaBlock = caseData.successCriteria
-    ? '\nSuccess Criteria:\n' + caseData.successCriteria.map((s, i) => `  [S${i + 1}] ${s}`).join('\n')
+    ? '\nSuccess Criteria:\n' + caseData.successCriteria.map((s, i) => `   ${s}`).join('\n')
     : '\nSuccess Criteria: Use professional judgment.';
   const difficultyTone = getDifficultyInstructions(userRole, difficulty);
 
@@ -60,15 +60,15 @@ function createSystemPrompt(caseData: CaseData, userRole: string, difficulty: st
     ``,
     `BACKGROUND:\n${caseData.context}`,
     ``,
-    `AUTHORITATIVE DATA (cite these exact figures — never invent numbers):\n${dataLines}`,
+    `KEY DATA (cite these exact figures — never invent numbers):\n${dataLines}`,
     ``,
-    `FRAMEWORK GUIDANCE (hint at these if the candidate struggles):\n${hintLines}`,
+    `FRAMEWORK HINTS (hint at these if the candidate struggles):\n${hintLines}`,
     `${calcBlock}`,
     `${criteriaBlock}`,
     ``,
     `RULES:`,
     `- Always reference the specific case and industry.`,
-    `- Write naturally. Do NOT use [D#], [F#], [C#], [S#] citation markers.`,
+    `- Use the case data naturally in your responses. Do not reference data by number.`,
     `- No markdown, no bullet points, no asterisks.`,
     `- Responses: 3-5 sentences (Easy), 4-6 (Medium), 5-8+ (Hard/Expert).`,
   ].join('\n');
