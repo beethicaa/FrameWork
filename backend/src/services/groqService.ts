@@ -37,7 +37,7 @@ export async function callGroq(
             Authorization: `Bearer ${keys[i]}`
           },
           body: JSON.stringify({
-            model: 'llama-3.3-70b-versatile',
+            model: 'qwen/qwen3.6-27b',
             messages,
             temperature: options?.temperature ?? 0.7,
             max_tokens: options?.maxTokens ?? 1024
