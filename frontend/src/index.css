@@ -863,3 +863,119 @@ body {
   .orb-1 { width: 300px; height: 300px; }
   .orb-2 { width: 250px; height: 250px; }
 }
+/* --- Thought-Process Timeline Flow --- */
+.thought-flow {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  padding: 8px 4px;
+}
+
+.thought-flow-item {
+  display: flex;
+  flex-direction: column;
+}
+
+.thought-flow-connector {
+  display: flex;
+  align-items: stretch;
+  gap: 12px;
+  padding: 6px 0 6px 27px;
+  position: relative;
+}
+
+.connector-line {
+  width: 2px;
+  min-height: 28px;
+  border-radius: 2px;
+  margin-left: 10px;
+}
+
+.connector-reasoning {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  color: rgba(255,255,255,0.45);
+  font-style: italic;
+  padding: 4px 10px;
+  background: rgba(255,255,255,0.03);
+  border-radius: 8px;
+  border-left: 2px solid rgba(255,255,255,0.08);
+}
+
+.reasoning-icon {
+  color: rgba(255,255,255,0.35);
+  font-weight: 700;
+}
+
+.thought-flow-node {
+  border: 1px solid;
+  border-radius: 14px;
+  padding: 14px 16px;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.thought-flow-node:hover {
+  transform: translateX(4px);
+}
+
+.thought-node-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.thought-node-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  border: 1px solid;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  flex-shrink: 0;
+}
+
+.thought-node-titles {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+.thought-stage-label {
+  font-size: 10.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.thought-node-label {
+  font-size: 14.5px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.thought-depth {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.depth-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  transition: background 0.3s ease;
+}
+
+.thought-process-text {
+  margin: 10px 0 0 52px;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: rgba(255,255,255,0.55);
+}

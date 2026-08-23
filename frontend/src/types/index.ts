@@ -46,8 +46,10 @@ export interface CaseFilters {
 
 export interface FlowNode {
   id: string;
-  type: 'problem' | 'analysis' | 'insight' | 'dead-end';
+  type: 'problem' | 'hypothesis' | 'exploration' | 'analysis' | 'insight' | 'recommendation' | 'dead-end';
   label: string;
+  thoughtProcess: string;
+  depth: number;
   position?: { x: number; y: number };
 }
 
@@ -56,6 +58,7 @@ export interface FlowEdge {
   source: string;
   target: string;
   label: string;
+  reasoning: string;
 }
 
 export interface Flowchart {

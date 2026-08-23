@@ -74,6 +74,29 @@ function createSystemPrompt(caseData: CaseData, userRole: string, difficulty: st
   ].join('\n');
 }
 
+function getThoughtFor(type: string, label: string): string {
+  const thoughts: Record<string, Record<string, string>> = {
+    analysis: {
+      'Market Attractiveness': 'Sizing the opportunity and understanding market dynamics',
+      'Competitive Analysis': 'Assessing who the key players are',
+      'Entry Mode Options': 'Evaluating build vs. partner vs. acquire trade-offs',
+      'Revenue Analysis': 'Breaking down revenue drivers and trends',
+      'Cost Structure': 'Understanding fixed vs. variable cost composition',
+      'Data Gathering': 'Identifying what data is needed to test the hypothesis',
+      'Current State Audit': 'Assessing the gap between current and desired state',
+    },
+    insight: {
+      'Financial Projections': 'Modeling the financial implications of entry',
+      'Risk Assessment': 'Identifying and quantifying key risks',
+      'Price Elasticity': 'Understanding how price sensitivity affects pricing',
+      'Tier Structure': 'Designing pricing tiers for different segments',
+      'Key Findings': 'Synthesizing data into actionable insights',
+      'Priority Initiatives': 'Identifying highest-impact initiatives',
+    },
+  };
+  return (thoughts[type] && thoughts[type][label]) || `Analyzing: ${label}`;
+}
+
 function generateFlowchartFromSession(session: ChatSession): { nodes: any[]; edges: any[] } {
   const caseData = session.caseData;
   const messages = session.messages;
@@ -251,41 +274,41 @@ function generateFlowchartFromSession(session: ChatSession): { nodes: any[]; edg
       // Only include nodes that have been "reached" based on conversation progress
       const threshold = Math.min(i, Math.floor(messageCount / 3));
       if (i <= threshold + 1) {
-        nodes.push({ ...n, id: `${n.id}` });
+        nodes.push({ ...n, id: `${n.id}`, thoughtProcess: getThoughtFor(n.type, n.label), depth: i + 1 });
       }
     });
     flow.edges.forEach((e, i) => {
       const sourceExists = nodes.some(n => n.id === e.source);
       const targetExists = nodes.some(n => n.id === e.target);
       if (sourceExists && targetExists) {
-        edges.push({ id: `edge-${i}`, ...e });
+        edges.push({ id: `edge-${i}`, ...e, reasoning: `From ${e.source} to ${e.target}: ${e.label}` });
       }
     });
   } else {
     // Generic fallback flow
     const genericNodes = [
-      { id: 'a1', type: 'analysis', label: 'Problem Analysis' },
-      { id: 'a2', type: 'analysis', label: 'Data Gathering' },
-      { id: 'a3', type: 'analysis', label: 'Hypothesis Testing' },
-      { id: 'a4', type: 'insight', label: 'Key Findings' },
-      { id: 'a5', type: 'insight', label: 'Recommendation' },
+      { id: 'a1', type: 'analysis', label: 'Problem Analysis', thoughtProcess: 'Breaking down the problem into key components', depth: 1 },
+      { id: 'a2', type: 'analysis', label: 'Data Gathering', thoughtProcess: 'Identifying required data and sources', depth: 2 },
+      { id: 'a3', type: 'analysis', label: 'Hypothesis Testing', thoughtProcess: 'Forming and testing hypotheses against data', depth: 3 },
+      { id: 'a4', type: 'insight', label: 'Key Findings', thoughtProcess: 'Synthesizing data into actionable insights', depth: 4 },
+      { id: 'a5', type: 'recommendation', label: 'Recommendation', thoughtProcess: 'Forming actionable recommendation', depth: 5 },
     ];
     const genericEdges = [
-      { source: 'problem', target: 'a1', label: 'Define scope' },
-      { source: 'a1', target: 'a2', label: 'Request data' },
-      { source: 'a2', target: 'a3', label: 'Test hypotheses' },
-      { source: 'a3', target: 'a4', label: 'Synthesize' },
-      { source: 'a4', target: 'a5', label: 'Action plan' },
+      { source: 'problem', target: 'a1', label: 'Define scope', reasoning: 'Need to scope the problem before gathering data' },
+      { source: 'a1', target: 'a2', label: 'Request data', reasoning: 'Structured problem needs supporting data' },
+      { source: 'a2', target: 'a3', label: 'Test hypotheses', reasoning: 'Data should validate or refute initial hypotheses' },
+      { source: 'a3', target: 'a4', label: 'Synthesize', reasoning: 'Test results reveal key findings' },
+      { source: 'a4', target: 'a5', label: 'Action plan', reasoning: 'Findings point to actionable recommendation' },
     ];
     genericNodes.forEach(n => nodes.push(n));
-    genericEdges.forEach((e, i) => edges.push({ id: `edge-${i}`, ...e }));
+    genericEdges.forEach((e, i) => edges.push({ id: `edge-${i}`, ...e, reasoning: `From ${e.source} to ${e.target}: ${e.label}` }));
   }
 
   // Add dynamic nodes based on user actions
   if (hasFramework) {
     const frameworkId = 'framework-node';
     if (!nodes.some(n => n.id === frameworkId)) {
-      nodes.push({ id: frameworkId, type: 'insight', label: 'Framework Proposed' });
+      nodes.push({ id: frameworkId, type: 'insight', label: 'Framework Proposed', thoughtProcess: 'Structured the problem using a MECE framework', depth: nodes.length });
       // Connect from the first analysis node
       const firstAnalysis = nodes.find(n => n.type === 'analysis' || n.type === 'insight');
       if (firstAnalysis && firstAnalysis.id !== frameworkId) {
@@ -297,7 +320,7 @@ function generateFlowchartFromSession(session: ChatSession): { nodes: any[]; edg
   if (hasNumbers) {
     const quantId = 'quant-node';
     if (!nodes.some(n => n.id === quantId)) {
-      nodes.push({ id: quantId, type: 'insight', label: 'Quant Analysis' });
+      nodes.push({ id: quantId, type: 'analysis', label: 'Quant Analysis', thoughtProcess: 'Dug into numbers to test key hypotheses', depth: nodes.length });
       const prevNode = nodes[nodes.length - 2];
       if (prevNode && prevNode.id !== quantId) {
         edges.push({ id: 'edge-quant', source: prevNode.id, target: quantId, label: 'Number crunch' });
@@ -308,7 +331,7 @@ function generateFlowchartFromSession(session: ChatSession): { nodes: any[]; edg
   if (hasRecommendation) {
     const recId = 'rec-node';
     if (!nodes.some(n => n.id === recId)) {
-      nodes.push({ id: recId, type: 'insight', label: 'Final Recommendation' });
+      nodes.push({ id: recId, type: 'recommendation', label: 'Final Recommendation', thoughtProcess: 'Synthesized insights into a clear recommendation', depth: nodes.length });
       const prevNode = nodes[nodes.length - 2];
       if (prevNode && prevNode.id !== recId) {
         edges.push({ id: 'edge-rec', source: prevNode.id, target: recId, label: 'Synthesized decision' });
@@ -321,7 +344,7 @@ function generateFlowchartFromSession(session: ChatSession): { nodes: any[]; edg
   if (userMsgs.length >= 4 && !hasFramework && !hasNumbers && !hasRecommendation) {
     const shortMsgs = userMsgs.every(m => m.content.trim().length < 40);
     if (shortMsgs) {
-      nodes.push({ id: 'stuck', type: 'dead-end', label: '⚠️ Need more structure' });
+      nodes.push({ id: 'stuck', type: 'dead-end', label: '⚠️ Need more structure', thoughtProcess: 'Lacking structured approach; guidance needed', depth: 2 });
       edges.push({ id: 'edge-stuck', source: 'problem', target: 'stuck', label: 'Redirect needed' });
     }
   }

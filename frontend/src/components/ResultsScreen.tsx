@@ -1,5 +1,4 @@
-import { useMemo, useEffect, useState } from 'react';
-import ReactFlow, { Background, Controls, ReactFlowProvider } from 'reactflow';
+import { useEffect, useState } from 'react';
 import 'reactflow/dist/style.css';
 import type { CaseData, ChatMessage, FlowNode, FlowEdge } from '../types';
 import { evaluateConversation } from '../api/caseApi';
@@ -28,10 +27,87 @@ interface ScoreSet {
 
 const nodeColors: Record<string, string> = {
   problem: '#6366f1',
+  hypothesis: '#a855f7',
+  exploration: '#0ea5e9',
   analysis: '#f59e0b',
   insight: '#22c55e',
+  recommendation: '#14b8a6',
   'dead-end': '#ef4444'
 };
+
+const stageMeta: Record<string, { icon: string; label: string }> = {
+  problem: { icon: '🎯', label: 'Problem Definition' },
+  hypothesis: { icon: '💡', label: 'Hypothesis' },
+  exploration: { icon: '🔍', label: 'Exploration' },
+  analysis: { icon: '📊', label: 'Analysis' },
+  insight: { icon: '✨', label: 'Insight' },
+  recommendation: { icon: '🏁', label: 'Recommendation' },
+  'dead-end': { icon: '⚠️', label: 'Dead End' }
+};
+
+// ─── Thought-Process Timeline Flow ───
+function ThoughtProcessFlow({ nodes, edges }: { nodes: FlowNode[]; edges: FlowEdge[] }) {
+  // Build a map of node id -> incoming edge (for reasoning trail)
+  const incomingEdge = new Map<string, FlowEdge>();
+  edges.forEach(e => {
+    if (!incomingEdge.has(e.target)) incomingEdge.set(e.target, e);
+  });
+
+  return (
+    <div className="thought-flow">
+      {nodes.map((node, i) => {
+        const color = nodeColors[node.type] || '#6366f1';
+        const meta = stageMeta[node.type] || { icon: '•', label: node.type };
+        const edge = incomingEdge.get(node.id);
+        const isLast = i === nodes.length - 1;
+
+        return (
+          <div key={node.id} className="thought-flow-item">
+            {/* Reasoning trail connector */}
+            {edge && i > 0 && (
+              <div className="thought-flow-connector">
+                <div className="connector-line" style={{ background: `linear-gradient(to bottom, transparent, ${color}55)` }} />
+                <div className="connector-reasoning">
+                  <span className="reasoning-icon">↳</span>
+                  <span>{edge.reasoning || edge.label}</span>
+                </div>
+              </div>
+            )}
+
+            {/* Node card */}
+            <div
+              className="thought-flow-node"
+              style={{
+                borderColor: `${color}66`,
+                background: `linear-gradient(135deg, ${color}12, ${color}05)`,
+                boxShadow: isLast ? `0 0 24px ${color}22` : undefined
+              }}
+            >
+              <div className="thought-node-header">
+                <div className="thought-node-icon" style={{ background: `${color}22`, borderColor: `${color}88` }}>
+                  {meta.icon}
+                </div>
+                <div className="thought-node-titles">
+                  <span className="thought-stage-label" style={{ color }}>{meta.label}</span>
+                  <span className="thought-node-label">{node.label}</span>
+                </div>
+                {/* Depth indicator */}
+                <div className="thought-depth" title={`Depth level ${node.depth ?? i}`}>
+                  {Array.from({ length: Math.min(5, Math.max(1, (node.depth ?? i) + 1)) }).map((_, d) => (
+                    <span key={d} className="depth-dot" style={{ background: d <= Math.min(4, node.depth ?? i) ? color : 'rgba(255,255,255,0.12)' }} />
+                  ))}
+                </div>
+              </div>
+              {node.thoughtProcess && (
+                <p className="thought-process-text">💭 {node.thoughtProcess}</p>
+              )}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 
 // ─── Spider/Radar Chart with 5 dimensions ───
 function SpiderChart({ scores, labels }: { scores: number[]; labels: string[] }) {
@@ -95,18 +171,6 @@ function SpiderChart({ scores, labels }: { scores: number[]; labels: string[] })
   );
 }
 
-function ensurePositions(nodes: FlowNode[]) {
-  return nodes.map((node, index) => {
-    if (node.position && typeof node.position.x === 'number' && typeof node.position.y === 'number') {
-      return node;
-    }
-    return {
-      ...node,
-      position: { x: 80 + (index % 3) * 260, y: 80 + Math.floor(index / 3) * 160 }
-    };
-  });
-}
-
 export default function ResultsScreen({
   caseData,
   userRole,
@@ -160,43 +224,6 @@ export default function ResultsScreen({
     const secs = seconds % 60;
     return `${mins}m ${secs}s`;
   };
-
-  const reactFlowNodes = useMemo(() => {
-    if (!flowchart || !flowchart.nodes || flowchart.nodes.length === 0) return [];
-    return ensurePositions(flowchart.nodes).map(node => ({
-      id: node.id,
-      position: node.position || { x: 0, y: 0 },
-      data: { label: node.label },
-      type: 'default',
-      style: {
-        borderWidth: 2,
-        borderStyle: 'solid',
-        borderColor: nodeColors[node.type] || 'rgba(255,255,255,0.18)',
-        background: nodeColors[node.type] ? `${nodeColors[node.type]}15` : 'var(--bg-card)',
-        color: 'var(--text-primary)',
-        padding: '10px 16px',
-        borderRadius: 12,
-        fontSize: 13,
-        fontWeight: 500,
-        minWidth: 160,
-        textAlign: 'center' as const,
-      }
-    }));
-  }, [flowchart]);
-
-  const reactFlowEdges = useMemo(() => {
-    if (!flowchart || !flowchart.edges) return [];
-    return flowchart.edges.map(edge => ({
-      id: edge.id,
-      source: edge.source,
-      target: edge.target,
-      label: edge.label,
-      animated: true,
-      style: { stroke: 'rgba(255,255,255,0.2)', strokeWidth: 2 },
-      labelStyle: { fill: 'rgba(255,255,255,0.4)', fontSize: 10 },
-      labelBgStyle: { fill: 'transparent' },
-    }));
-  }, [flowchart]);
 
   if (loading) {
     return (
@@ -322,28 +349,14 @@ export default function ResultsScreen({
           )}
         </div>
 
-        {/* Flowchart */}
+        {/* Thought Process Flow */}
         <div className="flowchart-section">
-          <h3>📊 Case Thinking Flowchart</h3>
-          <p>Logical flow of your case analysis.</p>
-          {reactFlowNodes.length > 0 ? (
-            <div className="flowchart-container">
-              <ReactFlowProvider>
-                <ReactFlow
-                  nodes={reactFlowNodes}
-                  edges={reactFlowEdges}
-                  fitView
-                  minZoom={0.5}
-                  maxZoom={2}
-                  style={{ width: '100%', height: '100%' }}
-                >
-                  <Background gap={32} color="rgba(255,255,255,0.04)" />
-                  <Controls showInteractive={false} />
-                </ReactFlow>
-              </ReactFlowProvider>
-            </div>
+          <h3>🧠 Your Thought Process in Motion</h3>
+          <p>How you moved from problem definition through exploration and reasoning toward your conclusion.</p>
+          {flowchart && flowchart.nodes && flowchart.nodes.length > 0 ? (
+            <ThoughtProcessFlow nodes={flowchart.nodes} edges={flowchart.edges} />
           ) : (
-            <div className="flowchart-container" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontSize: 14 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 40, color: 'var(--text-muted)', fontSize: 14 }}>
               Complete a case session to see your thinking flowchart here
             </div>
           )}
