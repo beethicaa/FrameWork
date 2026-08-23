@@ -97,7 +97,7 @@ function MiniFlowchart({ nodes, edges }: { nodes: FlowNode[]; edges: FlowEdge[] 
         const color = nodeColors[node.type] || '#6366f1';
 
         return (
-          <div key={node.id} className="flowchart-node-wrapper" style={{ animationDelay: '${i * 100}ms' }}>
+          <div key={node.id} className="flowchart-node-wrapper" style={{ animationDelay: `${i * 100}ms` }}>
             {incomingEdges.length > 0 && (
               <div className="flowchart-edge-label">
                 {incomingEdges.map(e => (
