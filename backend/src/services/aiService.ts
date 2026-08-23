@@ -75,26 +75,62 @@ function createSystemPrompt(caseData: CaseData, userRole: string, difficulty: st
 }
 
 function getThoughtFor(type: string, label: string): string {
-  const thoughts: Record<string, Record<string, string>> = {
-    analysis: {
-      'Market Attractiveness': 'Sizing the opportunity and understanding market dynamics',
-      'Competitive Analysis': 'Assessing who the key players are',
-      'Entry Mode Options': 'Evaluating build vs. partner vs. acquire trade-offs',
-      'Revenue Analysis': 'Breaking down revenue drivers and trends',
-      'Cost Structure': 'Understanding fixed vs. variable cost composition',
-      'Data Gathering': 'Identifying what data is needed to test the hypothesis',
-      'Current State Audit': 'Assessing the gap between current and desired state',
-    },
-    insight: {
-      'Financial Projections': 'Modeling the financial implications of entry',
-      'Risk Assessment': 'Identifying and quantifying key risks',
-      'Price Elasticity': 'Understanding how price sensitivity affects pricing',
-      'Tier Structure': 'Designing pricing tiers for different segments',
-      'Key Findings': 'Synthesizing data into actionable insights',
-      'Priority Initiatives': 'Identifying highest-impact initiatives',
-    },
+  const thoughts: Record<string, string> = {
+    // Market Entry
+    'Market Attractiveness': 'Sizing the opportunity and gauging whether the market rewards entry',
+    'Competitive Analysis': 'Mapping key players and their strengths to find gaps we can exploit',
+    'Entry Mode Options': 'Weighing build vs. partner vs. acquire trade-offs against speed and control',
+    'Financial Projections': 'Modeling the economics of each entry path to test viability',
+    'Risk Assessment': 'Stress-testing assumptions to surface regulatory and competitive risks',
+    'Recommendation': 'Synthesizing evidence into a clear go / no-go decision',
+    // Profitability
+    'Revenue Analysis': 'Decomposing revenue into price x volume to locate the decline',
+    'Cost Structure': 'Splitting fixed vs. variable costs to see where margin leaks',
+    'Profit Tree Breakdown': 'Building a profit tree to isolate the driver of the drop',
+    'Root Cause ID': 'Tracing the biggest branch of the tree back to its root cause',
+    'Improvement Levers': 'Identifying which levers move profit fastest at lowest cost',
+    'Implementation Plan': 'Sequencing fixes with owners, timelines, and quick wins',
+    // Pricing Strategy
+    'Value Proposition': 'Understanding what customers truly value and will pay for',
+    'Competitor Pricing': 'Benchmarking competitor prices to frame our positioning corridor',
+    'Cost Analysis': 'Establishing the cost floor below which pricing destroys value',
+    'Price Elasticity': 'Testing how demand responds at different price points',
+    'Tier Structure': 'Designing tiers so each segment captures maximum willingness-to-pay',
+    'Go-to-Market Pricing': 'Setting launch prices that balance penetration and margin',
+    // Growth Strategy
+    'Market Sizing': 'Sizing TAM / SAM / SOM to quantify the growth headroom',
+    'Customer Segments': 'Segmenting customers by need and profitability to target precisely',
+    'Channel Analysis': 'Evaluating which channels reach targets most efficiently',
+    'Growth Levers': 'Prioritizing organic vs. inorganic levers by impact and effort',
+    'Investment Plan': 'Allocating capital across initiatives based on expected returns',
+    'Growth Roadmap': 'Phasing execution so early wins fund later bets',
+    // Operations
+    'Process Mapping': 'Charting the value chain end-to-end to expose friction points',
+    'Bottleneck ID': 'Locating the constraint that throttles overall throughput',
+    'Cost Drivers': 'Attributing cost to activities to find reduction opportunities',
+    'Improvement Levers': 'Designing targeted fixes for each bottleneck identified',
+    'Tech Enablement': 'Assessing where automation compounds operational gains',
+    'Transformation Plan': 'Rolling out changes with change-management guardrails',
+    // M&A
+    'Strategic Rationale': 'Clarifying why acquisition beats organic or partnership routes',
+    'Target Screening': 'Filtering candidates against strategic fit and financial thresholds',
+    'Valuation': 'Triangulating value via DCF, comps, and precedent transactions',
+    'Due Diligence': 'Validating the assumptions behind the valuation thesis',
+    'Integration Plan': 'Planning Day-1 readiness and synergy capture mechanics',
+    'Value Creation': 'Tracking realized synergies against the deal thesis',
+    // Digital Transformation
+    'Current State Audit': 'Auditing digital maturity to baseline the gap',
+    'Tech Stack Analysis': 'Reviewing architecture debt and platform constraints',
+    'Customer Journey': 'Mapping journey pain points where digital adds value',
+    'Priority Initiatives': 'Ranking initiatives by impact, feasibility, and speed',
+    'Change Management': 'Preparing the organization for new ways of working',
+    'Digital Roadmap': 'Sequencing delivery into phased, measurable releases',
+    // Dynamic nodes
+    'Framework Proposed': 'Structured the problem MECE-ly before diving deeper',
+    'Quant Analysis': 'Crunching numbers to pressure-test the hypothesis',
+    'Final Recommendation': 'Distilling all findings into one actionable answer',
   };
-  return (thoughts[type] && thoughts[type][label]) || `Analyzing: ${label}`;
+  return thoughts[label] || ('Exploring: ' + label);
 }
 
 function generateFlowchartFromSession(session: ChatSession): { nodes: any[]; edges: any[] } {
@@ -109,7 +145,9 @@ function generateFlowchartFromSession(session: ChatSession): { nodes: any[]; edg
   nodes.push({
     id: 'problem',
     type: 'problem',
-    label: caseData.title.length > 30 ? caseData.title.substring(0, 30) + '...' : caseData.title
+    label: caseData.title.length > 30 ? caseData.title.substring(0, 30) + '...' : caseData.title,
+    thoughtProcess: 'Defined the core business problem from the case prompt',
+    depth: 0
   });
 
   // Category-specific flow nodes

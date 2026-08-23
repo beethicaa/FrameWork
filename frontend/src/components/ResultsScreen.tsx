@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
+import ReactFlow, { Background, Controls, ReactFlowProvider } from 'reactflow';
 import 'reactflow/dist/style.css';
 import type { CaseData, ChatMessage, FlowNode, FlowEdge } from '../types';
 import { evaluateConversation } from '../api/caseApi';
@@ -107,6 +108,70 @@ function ThoughtProcessFlow({ nodes, edges }: { nodes: FlowNode[]; edges: FlowEd
       })}
     </div>
   );
+}
+
+// ─── Custom ReactFlow node: stage icon + label + thought process + depth dots ───
+function ThoughtNode({ data }: { data: { label: string; nodeType: string; thoughtProcess?: string; depth?: number } }) {
+  const color = nodeColors[data.nodeType] || '#6366f1';
+  const meta = stageMeta[data.nodeType] || { icon: '•', label: '' };
+  const depth = data.depth ?? 0;
+
+  return (
+    <div style={{
+      border: `1.5px solid ${color}66`,
+      background: `linear-gradient(135deg, ${color}14, ${color}06)`,
+      borderRadius: 12,
+      padding: '10px 14px',
+      minWidth: 200,
+      maxWidth: 260,
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div style={{
+          width: 30, height: 30, borderRadius: 9,
+          background: `${color}22`, border: `1px solid ${color}88`,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          fontSize: 14, flexShrink: 0,
+        }}>
+          {meta.icon}
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 9.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color }}>
+            {meta.label}
+          </div>
+          <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', lineHeight: 1.3 }}>
+            {data.label}
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: 3, flexShrink: 0 }}>
+          {Array.from({ length: Math.min(5, Math.max(1, depth + 1)) }).map((_, d) => (
+            <span key={d} style={{
+              width: 6, height: 6, borderRadius: '50%',
+              background: d <= Math.min(4, depth) ? color : 'rgba(255,255,255,0.12)',
+            }} />
+          ))}
+        </div>
+      </div>
+      {data.thoughtProcess && (
+        <p style={{ margin: '7px 0 0', fontSize: 11, lineHeight: 1.45, color: 'rgba(255,255,255,0.55)' }}>
+          💭 {data.thoughtProcess}
+        </p>
+      )}
+    </div>
+  );
+}
+
+const flowNodeTypes = { thought: ThoughtNode };
+
+function ensurePositions(nodes: FlowNode[]) {
+  return nodes.map((node, index) => {
+    if (node.position && typeof node.position.x === 'number' && typeof node.position.y === 'number') {
+      return node;
+    }
+    return {
+      ...node,
+      position: { x: 80 + (index % 3) * 300, y: 80 + Math.floor(index / 3) * 190 }
+    };
+  });
 }
 
 // ─── Spider/Radar Chart with 5 dimensions ───
@@ -224,6 +289,35 @@ export default function ResultsScreen({
     const secs = seconds % 60;
     return `${mins}m ${secs}s`;
   };
+
+  const reactFlowNodes = useMemo(() => {
+    if (!flowchart || !flowchart.nodes || flowchart.nodes.length === 0) return [];
+    return ensurePositions(flowchart.nodes).map(node => ({
+      id: node.id,
+      position: node.position || { x: 0, y: 0 },
+      type: 'thought' as const,
+      data: {
+        label: node.label,
+        nodeType: node.type,
+        thoughtProcess: node.thoughtProcess,
+        depth: node.depth,
+      },
+    }));
+  }, [flowchart]);
+
+  const reactFlowEdges = useMemo(() => {
+    if (!flowchart || !flowchart.edges) return [];
+    return flowchart.edges.map(edge => ({
+      id: edge.id,
+      source: edge.source,
+      target: edge.target,
+      label: edge.reasoning || edge.label,
+      animated: true,
+      style: { stroke: 'rgba(255,255,255,0.2)', strokeWidth: 2 },
+      labelStyle: { fill: 'rgba(255,255,255,0.4)', fontSize: 10 },
+      labelBgStyle: { fill: 'transparent' },
+    }));
+  }, [flowchart]);
 
   if (loading) {
     return (
@@ -353,10 +447,25 @@ export default function ResultsScreen({
         <div className="flowchart-section">
           <h3>🧠 Your Thought Process in Motion</h3>
           <p>How you moved from problem definition through exploration and reasoning toward your conclusion.</p>
-          {flowchart && flowchart.nodes && flowchart.nodes.length > 0 ? (
-            <ThoughtProcessFlow nodes={flowchart.nodes} edges={flowchart.edges} />
+          {reactFlowNodes.length > 0 ? (
+            <div className="flowchart-container">
+              <ReactFlowProvider>
+                <ReactFlow
+                  nodes={reactFlowNodes}
+                  edges={reactFlowEdges}
+                  nodeTypes={flowNodeTypes}
+                  fitView
+                  minZoom={0.4}
+                  maxZoom={2}
+                  style={{ width: '100%', height: '100%' }}
+                >
+                  <Background gap={32} color="rgba(255,255,255,0.04)" />
+                  <Controls showInteractive={false} />
+                </ReactFlow>
+              </ReactFlowProvider>
+            </div>
           ) : (
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 40, color: 'var(--text-muted)', fontSize: 14 }}>
+            <div className="flowchart-container" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontSize: 14 }}>
               Complete a case session to see your thinking flowchart here
             </div>
           )}
