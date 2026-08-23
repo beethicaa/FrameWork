@@ -249,6 +249,7 @@ export default function ResultsScreen({
       target: edge.target,
       label: edge.reasoning || edge.label,
       animated: true,
+      markerEnd: { type: 'arrowclosed', color: 'rgba(255,255,255,0.45)', width: 18, height: 18 },
       style: { stroke: 'rgba(255,255,255,0.2)', strokeWidth: 2 },
       labelStyle: { fill: 'rgba(255,255,255,0.4)', fontSize: 10 },
       labelBgStyle: { fill: 'transparent' },

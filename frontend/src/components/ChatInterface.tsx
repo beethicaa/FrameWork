@@ -1,8 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import type { CaseData, ChatMessage, Flowchart, FlowNode, FlowEdge } from '../types';
 import { API_BASE, fetchFlowchart, startChatSession, getChatHistory, sendChatMessage } from '../api/caseApi';
-import ReactFlow, { Background, Controls, ReactFlowProvider } from 'reactflow';
-import 'reactflow/dist/style.css';
 
 // Strip all markdown and internal citation markers from displayed text
 function clean(t: string): string {
@@ -74,81 +72,58 @@ interface ChatInterfaceProps {
   onSessionCreated?: (sessionId: string) => void;
 }
 
-// ─── Inline Mini Flowchart (ReactFlow) ───
-
-const miniNodeColors: Record<string, string> = {
-  problem: '#6366f1',
-  hypothesis: '#a855f7',
-  exploration: '#0ea5e9',
-  analysis: '#f59e0b',
-  insight: '#22c55e',
-  recommendation: '#14b8a6',
-  'dead-end': '#ef4444'
-};
-
-function CompactNode({ data }: { data: { label: string; nodeType: string } }) {
-  const color = miniNodeColors[data.nodeType] || '#6366f1';
-  return (
-    <div style={{
-      border: `1.5px solid ${color}88`,
-      background: `${color}18`,
-      borderRadius: 10,
-      padding: '6px 10px',
-      fontSize: 11,
-      fontWeight: 600,
-      color: 'var(--text-primary)',
-      minWidth: 120,
-      textAlign: 'center',
-    }}>
-      {data.label}
-    </div>
-  );
-}
-
-const compactNodeTypes = { compact: CompactNode };
+// ─── Inline Mini Flowchart Component ───
 
 function MiniFlowchart({ nodes, edges }: { nodes: FlowNode[]; edges: FlowEdge[] }) {
   if (!nodes || nodes.length === 0) {
     return <div className="flowchart-empty">Start the conversation to build your case flowchart</div>;
   }
 
-  const rfNodes = nodes.map((node, i) => ({
-    id: node.id,
-    position: node.position || { x: (i % 2) * 230, y: i * 115 },
-    type: 'compact' as const,
-    data: { label: clean(node.label), nodeType: node.type },
-  }));
-
-  const rfEdges = edges.map(e => ({
-    id: e.id,
-    source: e.source,
-    target: e.target,
-    label: e.reasoning || e.label,
-    animated: true,
-    style: { stroke: 'rgba(255,255,255,0.25)', strokeWidth: 1.5 },
-    labelStyle: { fill: 'rgba(255,255,255,0.45)', fontSize: 9 },
-    labelBgStyle: { fill: 'transparent' },
-  }));
+  const nodeColors: Record<string, string> = {
+    problem: '#6366f1',
+    hypothesis: '#a855f7',
+    exploration: '#0ea5e9',
+    analysis: '#f59e0b',
+    insight: '#22c55e',
+    recommendation: '#14b8a6',
+    'dead-end': '#ef4444'
+  };
 
   return (
-    <div className="mini-flowchart" style={{ width: '100%', height: 420 }}>
-      <ReactFlowProvider>
-        <ReactFlow
-          nodes={rfNodes}
-          edges={rfEdges}
-          nodeTypes={compactNodeTypes}
-          fitView
-          minZoom={0.3}
-          maxZoom={1.5}
-        >
-          <Background gap={24} color="rgba(255,255,255,0.04)" />
-          <Controls showInteractive={false} />
-        </ReactFlow>
-      </ReactFlowProvider>
+    <div className="mini-flowchart">
+      {nodes.map((node, i) => {
+        const incomingEdges = edges.filter(e => e.target === node.id);
+        const outgoingEdges = edges.filter(e => e.source === node.id);
+        const color = nodeColors[node.type] || '#6366f1';
+
+        return (
+          <div key={node.id} className="flowchart-node-wrapper" style={{ animationDelay: '${i * 100}ms' }}>
+            {incomingEdges.length > 0 && (
+              <div className="flowchart-edge-label">
+                {incomingEdges.map(e => (
+                  <span key={e.id} className="edge-label">{clean(e.label)}</span>
+                ))}
+              </div>
+            )}
+            <div className="flowchart-node" style={{ borderColor: color, backgroundColor: '${color}15' }}>
+              <div className="flowchart-node-icon">
+                {node.type === 'problem' ? '' : node.type === 'analysis' ? '' : node.type === 'insight' ? '' : node.type === 'recommendation' ? '' : ⚠️}
+              </div>
+              <span className="flowchart-node-label">{clean(node.label)}</span>
+            </div>
+            {outgoingEdges.length > 0 && (
+              <div className="flowchart-connector">
+                <svg width="16" height="24" viewBox="0 0 16 24">
+                  <path d="M8 0v20M1 13l7 7 7-7" fill="none" stroke="rgba(255,255,255,0.2)" strokeWidth="2" />
+                </svg>
+              </div>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }
-
 // ─── Main ChatInterface ───
 
 export default function ChatInterface({ caseData, userRole, difficulty, onBack, onFinish, onSessionCreated }: ChatInterfaceProps) {
