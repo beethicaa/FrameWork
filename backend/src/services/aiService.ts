@@ -1,4 +1,5 @@
 import { callGroq, parseJsonResult } from './groqService';
+import { generateAIFlowchart } from './aiFlowchart';
 import { CaseData } from '../data/cases';
 
 interface ChatMessage {
@@ -16,9 +17,11 @@ interface ChatSession {
   frameworkProposed: boolean;
   hypothesisTested: boolean;
   quantitativeAnalysis: boolean;
+  aiFlowchart?: { nodes: any[]; edges: any[] } | null;
 }
 
 const sessions = new Map<string, ChatSession>();
+const flowchartInFlight = new Set<string>();
 
 function getDifficultyInstructions(userRole: string, difficulty: string): string {
   if (userRole === 'interviewee') {
@@ -470,6 +473,19 @@ export async function processChat(
   }
 
   sessions.set(sessionId, session);
+  // Regenerate the AI thought-process flowchart in the background (one at a time per session)
+  if (!flowchartInFlight.has(sessionId)) {
+    flowchartInFlight.add(sessionId);
+    void generateAIFlowchart(session.messages).then(chart => {
+      if (chart) {
+        const s = sessions.get(sessionId);
+        if (s) {
+          s.aiFlowchart = chart;
+          sessions.set(sessionId, s);
+        }
+      }
+    }).finally(() => flowchartInFlight.delete(sessionId));
+  }
   return { reply, sessionId };
 }
 
@@ -483,7 +499,7 @@ export function getFlowchart(
       edges: []
     };
   }
-  return generateFlowchartFromSession(session);
+  return session.aiFlowchart || generateFlowchartFromSession(session);
 }
 
 export function getSession(sessionId: string): ChatSession | undefined {

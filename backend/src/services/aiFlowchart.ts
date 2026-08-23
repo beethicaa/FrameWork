@@ -1,0 +1,102 @@
+import { callGroq, parseJsonResult } from './groqService';
+
+export interface FlowchartData {
+  nodes: Array<{
+    id: string;
+    type: string;
+    label: string;
+    thoughtProcess?: string;
+    depth?: number;
+  }>;
+  edges: Array<{
+    id: string;
+    source: string;
+    target: string;
+    label: string;
+    reasoning: string;
+  }>;
+}
+
+const VALID_TYPES = new Set([
+  'problem', 'hypothesis', 'exploration', 'analysis', 'insight', 'recommendation', 'dead-end'
+]);
+
+/**
+ * Reconstructs the candidate's ACTUAL thought process from the conversation
+ * transcript using the LLM, producing a dynamic flowchart that reflects real
+ * hypotheses, explorations, dead-ends and conclusions — not a fixed template.
+ */
+export async function generateAIFlowchart(
+  messages: Array<{ role: string; content: string }>
+): Promise<FlowchartData | null> {
+  if (messages.length < 4) return null;
+
+  const NL = String.fromCharCode(10);
+  const transcript = messages
+    .filter(m => m.role !== 'system')
+    .map(m => (m.role === 'user' ? 'CANDIDATE: ' : 'INTERVIEWER: ') + m.content)
+    .join(NL);
+
+  const prompt = [
+    'Analyze this case interview transcript and extract the thinker\u2019s ACTUAL thought process as a flowchart.',
+    '',
+    transcript,
+    '',
+    'Return ONLY valid JSON, no markdown, no explanation:',
+    '{"nodes":[{"id":"n1","type":"problem","label":"short title max 25 chars","thoughtProcess":"what the thinker was reasoning at this step, one sentence","depth":0}],"edges":[{"source":"n1","target":"n2","label":"transition max 20 chars","reasoning":"why this step led to the next, one short sentence"}]}',
+    '',
+    'Rules:',
+    '- First node: type "problem", representing the core question being tackled',
+    '- Only include steps that ACTUALLY happened in the conversation above',
+    '- Node types: problem, hypothesis, exploration, analysis, insight, recommendation, dead-end',
+    '- Mark approaches that were tried and abandoned as dead-end nodes',
+    '- If a recommendation was reached, the last node must be type "recommendation"',
+    '- depth increases as the analysis goes deeper (0 for problem, higher for later steps)',
+    '- 4-10 nodes total, connected in sequence (branches allowed where the thinking split)',
+  ].join(NL);
+
+  try {
+    const raw = await callGroq(
+      [
+        { role: 'system', content: 'You are an expert at reconstructing consulting thought processes. Return ONLY valid JSON.' },
+        { role: 'user', content: prompt }
+      ],
+      { temperature: 0.3, maxTokens: 1500 }
+    );
+
+    const parsed = parseJsonResult<{ nodes: any[]; edges: any[] }>(raw);
+    if (!parsed || !Array.isArray(parsed.nodes) || parsed.nodes.length < 3 || !Array.isArray(parsed.edges)) {
+      return null;
+    }
+
+    // Validate & normalize nodes
+    const nodes = parsed.nodes
+      .filter(n => n && n.id && n.label)
+      .map(n => ({
+        id: String(n.id),
+        type: VALID_TYPES.has(n.type) ? n.type : 'analysis',
+        label: String(n.label).substring(0, 40),
+        thoughtProcess: n.thoughtProcess ? String(n.thoughtProcess) : undefined,
+        depth: typeof n.depth === 'number' ? Math.max(0, Math.min(9, n.depth)) : 0,
+      }));
+
+    const nodeIds = new Set(nodes.map(n => n.id));
+    const edges = parsed.edges
+      .filter(e => e && nodeIds.has(e.source) && nodeIds.has(e.target))
+      .map((e, i) => ({
+        id: `edge-${i}`,
+        source: e.source,
+        target: e.target,
+        label: e.label ? String(e.label).substring(0, 30) : '',
+        reasoning: e.reasoning ? String(e.reasoning) : (e.label ? String(e.label) : ''),
+      }));
+
+    if (nodes.length >= 3 && edges.length >= 2) {
+      return { nodes, edges };
+    }
+    return null;
+  } catch (err) {
+    console.error('AI flowchart generation failed:', err);
+    return null;
+  }
+}
