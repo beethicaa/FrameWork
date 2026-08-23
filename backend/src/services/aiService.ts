@@ -111,7 +111,6 @@ function getThoughtFor(type: string, label: string): string {
     'Process Mapping': 'Charting the value chain end-to-end to expose friction points',
     'Bottleneck ID': 'Locating the constraint that throttles overall throughput',
     'Cost Drivers': 'Attributing cost to activities to find reduction opportunities',
-    'Improvement Levers': 'Designing targeted fixes for each bottleneck identified',
     'Tech Enablement': 'Assessing where automation compounds operational gains',
     'Transformation Plan': 'Rolling out changes with change-management guardrails',
     // M&A
