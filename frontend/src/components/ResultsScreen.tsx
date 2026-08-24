@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo } from 'react';
-import ReactFlow, { Background, Controls, ReactFlowProvider, getSmoothStepPath, BaseEdge, EdgeLabelRenderer } from 'reactflow';
+import ReactFlow, { Background, Controls, ReactFlowProvider, getSmoothStepPath, BaseEdge, EdgeLabelRenderer, Handle, Position } from 'reactflow';
 import 'reactflow/dist/style.css';
 import type { CaseData, ChatMessage, FlowNode, FlowEdge } from '../types';
 import { evaluateConversation } from '../api/caseApi';
@@ -61,6 +61,8 @@ function ThoughtNode({ data }: { data: { label: string; nodeType: string; though
       minWidth: 200,
       maxWidth: 260,
     }}>
+      {/* Handles are REQUIRED for edges to attach to custom nodes — hidden visually */}
+      <Handle type="target" position={Position.Top} style={{ opacity: 0, width: 6, height: 6 }} />
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         <div style={{
           width: 30, height: 30, borderRadius: 9,
@@ -92,6 +94,7 @@ function ThoughtNode({ data }: { data: { label: string; nodeType: string; though
           💭 {data.thoughtProcess}
         </p>
       )}
+      <Handle type="source" position={Position.Bottom} style={{ opacity: 0, width: 6, height: 6 }} />
     </div>
   );
 }
