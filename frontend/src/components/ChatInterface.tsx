@@ -107,7 +107,7 @@ function MiniFlowchart({ nodes, edges }: { nodes: FlowNode[]; edges: FlowEdge[] 
             )}
             <div className="flowchart-node" style={{ borderColor: color, backgroundColor: `${color}15` }}>
               <div className="flowchart-node-icon">
-                {node.type === 'problem' ? '' : node.type === 'analysis' ? '' : node.type === 'insight' ? '' : node.type === 'recommendation' ? '' : '⚠️'}
+                {node.type === 'problem' ? '' : node.type === 'hypothesis' ? '' : node.type === 'exploration' ? '' : node.type === 'analysis' ? '' : node.type === 'insight' ? '✨' : node.type === 'recommendation' ? '' : '⚠️'}
               </div>
               <span className="flowchart-node-label">{clean(node.label)}</span>
             </div>

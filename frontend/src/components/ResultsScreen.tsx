@@ -249,8 +249,8 @@ export default function ResultsScreen({
       target: edge.target,
       label: edge.reasoning || edge.label,
       animated: true,
-      markerEnd: { type: MarkerType.ArrowClosed, color: 'rgba(255,255,255,0.45)', width: 18, height: 18 },
-      style: { stroke: 'rgba(255,255,255,0.2)', strokeWidth: 2 },
+      markerEnd: { type: MarkerType.ArrowClosed, color: '#94a3b8', width: 20, height: 20 },
+      style: { stroke: '#64748b', strokeWidth: 2 },
       labelStyle: { fill: 'rgba(255,255,255,0.4)', fontSize: 10 },
       labelBgStyle: { fill: 'transparent' },
     }));
@@ -450,12 +450,17 @@ export default function ResultsScreen({
 
 function heuristicScore(
   caseData: CaseData,
-  _userRole: 'interviewee' | 'interviewer',
+  userRole: 'interviewee' | 'interviewer',
   difficulty: string,
   messages: ChatMessage[]
 ): ScoreSet {
-  const userMessages = messages.filter(m => m.role === 'user');
-  const aiMessages = messages.filter(m => m.role === 'assistant');
+  // When the human is the interviewer, the AI (assistant) is the candidate being scored
+  const userMessages = userRole === 'interviewee'
+    ? messages.filter(m => m.role === 'user')
+    : messages.filter(m => m.role === 'assistant');
+  const aiMessages = userRole === 'interviewee'
+    ? messages.filter(m => m.role === 'assistant')
+    : messages.filter(m => m.role === 'user');
   const totalExchanges = Math.min(userMessages.length, aiMessages.length);
 
   const allUserText = userMessages.map(m => m.content).join(' ');

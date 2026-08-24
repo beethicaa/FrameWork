@@ -35,7 +35,7 @@ CASE: ${caseData.title}
 INDUSTRY: ${caseData.industry}
 CATEGORY: ${caseData.category}
 DIFFICULTY: ${difficulty}
-ROLE: ${userRole === 'interviewee' ? 'Candidate (interviewee)' : 'Interviewer'}
+ROLE: ${userRole === 'interviewee' ? 'The HUMAN was the candidate being interviewed. Evaluate the CANDIDATE (INTERVIEWER-labeled lines are the AI).' : 'The AI played the candidate. Evaluate the CANDIDATE (the lines labeled CANDIDATE).'}
 
 CASE PROMPT: ${caseData.prompt}
 CONTEXT: ${caseData.context}
