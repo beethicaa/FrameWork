@@ -18,15 +18,21 @@ export async function evaluateConversation(
   difficulty: string,
   messages: { role: string; content: string }[]
 ): Promise<ScoreResult> {
-  const userMessages = messages.filter(m => m.role === 'user');
-  const aiMessages = messages.filter(m => m.role === 'assistant');
+  // Score the CANDIDATE regardless of role: when human is interviewer, AI is the candidate
+  const humanIsCandidate = userRole === 'interviewee';
+  const candidateMessages = messages.filter(m => humanIsCandidate ? m.role === 'user' : m.role === 'assistant');
+  const otherMessages = messages.filter(m => humanIsCandidate ? m.role === 'assistant' : m.role === 'user');
 
-  if (userMessages.length === 0) {
+  if (candidateMessages.length === 0) {
     return getDefaultScore('No conversation to evaluate');
   }
 
+  // Label roles correctly in the transcript based on who the human played
   const conversationLog = messages
-    .map(m => `[${m.role === 'user' ? 'CANDIDATE' : 'INTERVIEWER'}]: ${m.content}`)
+    .map(m => {
+      const isCandidate = humanIsCandidate ? (m.role === 'user') : (m.role === 'assistant');
+      return `[${isCandidate ? 'CANDIDATE' : 'INTERVIEWER'}]: ${m.content}`;
+    })
     .join('\n\n');
 
   const prompt = `You are a senior McKinsey partner evaluating a case interview performance.
@@ -129,11 +135,13 @@ function heuristicScore(
   difficulty: string,
   messages: { role: string; content: string }[]
 ): ScoreResult {
-  const userMessages = messages.filter(m => m.role === 'user');
-  const aiMessages = messages.filter(m => m.role === 'assistant');
-  const totalExchanges = Math.min(userMessages.length, aiMessages.length);
+  // Score the CANDIDATE regardless of role: when human is interviewer, AI is candidate
+  const humanIsCandidate = userRole === 'interviewee';
+  const candidateMessages = messages.filter(m => humanIsCandidate ? m.role === 'user' : m.role === 'assistant');
+  const otherMessages = messages.filter(m => humanIsCandidate ? m.role === 'assistant' : m.role === 'user');
+  const totalExchanges = Math.min(candidateMessages.length, otherMessages.length);
+  const allUserText = candidateMessages.map(m => m.content).join(' ');
 
-  const allUserText = userMessages.map(m => m.content).join(' ');
   const lower = allUserText.toLowerCase();
 
   // Structure detection
@@ -173,8 +181,8 @@ function heuristicScore(
   ));
 
   // Communication detection
-  const avgLength = userMessages.length > 0
-    ? userMessages.reduce((a, m) => a + m.content.length, 0) / userMessages.length
+  const avgLength = candidateMessages.length > 0
+    ? candidateMessages.reduce((a, m) => a + m.content.length, 0) / candidateMessages.length
     : 0;
   const hasStructure = /first|second|third|finally|in summary|to conclude/.test(lower);
   const communicationScore = Math.min(95, Math.round(
