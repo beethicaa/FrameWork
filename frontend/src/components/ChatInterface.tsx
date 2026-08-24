@@ -107,7 +107,7 @@ function MiniFlowchart({ nodes, edges }: { nodes: FlowNode[]; edges: FlowEdge[] 
             )}
             <div className="flowchart-node" style={{ borderColor: color, backgroundColor: `${color}15` }}>
               <div className="flowchart-node-icon">
-                {node.type === 'problem' ? '' : node.type === 'hypothesis' ? '' : node.type === 'exploration' ? '' : node.type === 'analysis' ? '' : node.type === 'insight' ? '✨' : node.type === 'recommendation' ? '' : '⚠️'}
+                {node.type === 'problem' ? '\u{1F3AF}' : node.type === 'hypothesis' ? '\u{1F4A1}' : node.type === 'exploration' ? '\u{1F50D}' : node.type === 'analysis' ? '\u{1F4CA}' : node.type === 'insight' ? '\u{2728}' : node.type === 'recommendation' ? '\u{1F3C1}' : '\u26A0\uFE0F'}
               </div>
               <span className="flowchart-node-label">{clean(node.label)}</span>
             </div>
@@ -207,7 +207,38 @@ export default function ChatInterface({ caseData, userRole, difficulty, onBack, 
     if (!sessionId) return;
     try {
       const data = await fetchFlowchart(sessionId);
-      setFlowchart(data);
+      setFlowchart(prev => {
+        if (!prev || !prev.nodes || prev.nodes.length === 0) return data;
+        // Merge cumulatively: keep every finding ever discovered, add only new ones.
+        // The AI regenerates node ids each poll, so match by normalized label.
+        const norm = (t: string) => t.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+        const byLabel = new Map(prev.nodes.map(n => [norm(n.label), n]));
+        const idMap = new Map<string, string>();
+        const mergedNodes = [...prev.nodes];
+        for (const n of data.nodes) {
+          const key = norm(n.label);
+          const match = byLabel.get(key);
+          if (match) {
+            idMap.set(n.id, match.id);
+          } else {
+            mergedNodes.push(n);
+            byLabel.set(key, n);
+            idMap.set(n.id, n.id);
+          }
+        }
+        const seenEdges = new Set(prev.edges.map(e => e.source + '|' + e.target));
+        const mergedEdges = [...prev.edges];
+        for (const e of data.edges) {
+          const src = idMap.get(e.source) || e.source;
+          const tgt = idMap.get(e.target) || e.target;
+          const key = src + '|' + tgt;
+          if (!seenEdges.has(key)) {
+            mergedEdges.push({ ...e, source: src, target: tgt });
+            seenEdges.add(key);
+          }
+        }
+        return { nodes: mergedNodes, edges: mergedEdges };
+      });
     } catch { /* ignore polling errors */ }
   }
 

@@ -249,8 +249,8 @@ export default function ResultsScreen({
       target: edge.target,
       label: edge.reasoning || edge.label,
       animated: true,
-      markerEnd: { type: MarkerType.ArrowClosed, color: '#94a3b8', width: 20, height: 20 },
-      style: { stroke: '#64748b', strokeWidth: 2 },
+      markerEnd: { type: MarkerType.ArrowClosed, color: '#f1f5f9', width: 24, height: 24 },
+      style: { stroke: '#94a3b8', strokeWidth: 2.5 },
       labelStyle: { fill: 'rgba(255,255,255,0.4)', fontSize: 10 },
       labelBgStyle: { fill: 'transparent' },
     }));
