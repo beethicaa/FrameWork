@@ -106,22 +106,23 @@ const flowNodeTypes = { thought: ThoughtNode };
 const flowEdgeTypes = {
   arrow: ({ sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, style, label }: any) => {
     const [path, labelX, labelY] = getSmoothStepPath({ sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition });
-    const dx = targetX - sourceX;
-    const dy = targetY - sourceY;
-    const len = Math.hypot(dx, dy) || 1;
-    const ux = dx / len;
-    const uy = dy / len;
+    // Edges enter the target from its TOP handle, so the final approach is vertical.
+    // Orient the arrowhead straight down and pull it back 3px so it doesn't touch the box.
+    const ux = 0;
+    const uy = 1;
     const px = -uy;
     const py = ux;
-    const size = 10;
-    const bX = targetX - ux * size + px * size * 0.55;
-    const bY = targetY - uy * size + py * size * 0.55;
-    const cX = targetX - ux * size - px * size * 0.55;
-    const cY = targetY - uy * size - py * size * 0.55;
+    const size = 9;
+    const tipX = targetX;
+    const tipY = targetY - 3;
+    const bX = tipX - ux * size + px * size * 0.6;
+    const bY = tipY - uy * size + py * size * 0.6;
+    const cX = tipX - ux * size - px * size * 0.6;
+    const cY = tipY - uy * size - py * size * 0.6;
     return (
       <>
         <BaseEdge path={path} style={style} />
-        <polygon points={`${targetX},${targetY} ${bX},${bY} ${cX},${cY}`} fill="#f1f5f9" stroke="#94a3b8" strokeWidth="0.5" />
+        <polygon points={`${tipX},${tipY} ${bX},${bY} ${cX},${cY}`} fill="#e2e8f0" />
         {label ? (
           <EdgeLabelRenderer>
             <div
@@ -129,11 +130,16 @@ const flowEdgeTypes = {
               style={{
                 position: 'absolute',
                 transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)`,
-                background: 'rgba(15, 23, 42, 0.9)',
-                color: 'rgba(255,255,255,0.75)',
+                background: '#0f172a',
+                border: '1px solid rgba(148,163,184,0.35)',
+                color: 'rgba(255,255,255,0.8)',
                 padding: '2px 8px',
                 borderRadius: 6,
                 fontSize: 10,
+                zIndex: 5,
+                maxWidth: 200,
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
                 pointerEvents: 'none' as const,
                 whiteSpace: 'nowrap',
               }}
@@ -148,13 +154,19 @@ const flowEdgeTypes = {
 };
 
 function ensurePositions(nodes: FlowNode[]) {
-  return nodes.map((node, index) => {
+  // Layout by depth tiers: each depth is a column flowing left-to-right,
+  // matching how the thinking progressed and keeping edges short & clean.
+  const depthCount = new Map<number, number>();
+  return nodes.map(node => {
     if (node.position && typeof node.position.x === 'number' && typeof node.position.y === 'number') {
       return node;
     }
+    const depth = Math.max(0, Math.min(9, node.depth ?? 0));
+    const row = depthCount.get(depth) || 0;
+    depthCount.set(depth, row + 1);
     return {
       ...node,
-      position: { x: 80 + (index % 3) * 300, y: 80 + Math.floor(index / 3) * 190 }
+      position: { x: 60 + depth * 320, y: 60 + row * 210 }
     };
   });
 }
