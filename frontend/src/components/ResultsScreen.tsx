@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo } from 'react';
-import ReactFlow, { Background, Controls, ReactFlowProvider, MarkerType } from 'reactflow';
+import ReactFlow, { Background, Controls, ReactFlowProvider, getSmoothStepPath, BaseEdge, EdgeLabelRenderer } from 'reactflow';
 import 'reactflow/dist/style.css';
 import type { CaseData, ChatMessage, FlowNode, FlowEdge } from '../types';
 import { evaluateConversation } from '../api/caseApi';
@@ -97,6 +97,52 @@ function ThoughtNode({ data }: { data: { label: string; nodeType: string; though
 }
 
 const flowNodeTypes = { thought: ThoughtNode };
+
+// Custom edge that draws an explicit, always-visible arrowhead at the target end.
+// (Built-in markerEnd SVG defs were not rendering reliably, so we draw the triangle ourselves.)
+const flowEdgeTypes = {
+  arrow: ({ sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, style, label }: any) => {
+    const [path, labelX, labelY] = getSmoothStepPath({ sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition });
+    const dx = targetX - sourceX;
+    const dy = targetY - sourceY;
+    const len = Math.hypot(dx, dy) || 1;
+    const ux = dx / len;
+    const uy = dy / len;
+    const px = -uy;
+    const py = ux;
+    const size = 10;
+    const bX = targetX - ux * size + px * size * 0.55;
+    const bY = targetY - uy * size + py * size * 0.55;
+    const cX = targetX - ux * size - px * size * 0.55;
+    const cY = targetY - uy * size - py * size * 0.55;
+    return (
+      <>
+        <BaseEdge path={path} style={style} />
+        <polygon points={`${targetX},${targetY} ${bX},${bY} ${cX},${cY}`} fill="#f1f5f9" stroke="#94a3b8" strokeWidth="0.5" />
+        {label ? (
+          <EdgeLabelRenderer>
+            <div
+              className="nodrag nopan"
+              style={{
+                position: 'absolute',
+                transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)`,
+                background: 'rgba(15, 23, 42, 0.9)',
+                color: 'rgba(255,255,255,0.75)',
+                padding: '2px 8px',
+                borderRadius: 6,
+                fontSize: 10,
+                pointerEvents: 'none' as const,
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {label}
+            </div>
+          </EdgeLabelRenderer>
+        ) : null}
+      </>
+    );
+  },
+};
 
 function ensurePositions(nodes: FlowNode[]) {
   return nodes.map((node, index) => {
@@ -247,12 +293,10 @@ export default function ResultsScreen({
       id: edge.id,
       source: edge.source,
       target: edge.target,
+      type: 'arrow',
       label: edge.reasoning || edge.label,
       animated: true,
-      markerEnd: { type: MarkerType.ArrowClosed, color: '#f1f5f9', width: 24, height: 24 },
       style: { stroke: '#94a3b8', strokeWidth: 2.5 },
-      labelStyle: { fill: 'rgba(255,255,255,0.4)', fontSize: 10 },
-      labelBgStyle: { fill: 'transparent' },
     }));
   }, [flowchart]);
 
@@ -391,6 +435,7 @@ export default function ResultsScreen({
                   nodes={reactFlowNodes}
                   edges={reactFlowEdges}
                   nodeTypes={flowNodeTypes}
+                  edgeTypes={flowEdgeTypes}
                   fitView
                   minZoom={0.4}
                   maxZoom={2}
