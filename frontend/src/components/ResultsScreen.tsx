@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo } from 'react';
-import ReactFlow, { Background, Controls, ReactFlowProvider, getSmoothStepPath, BaseEdge, EdgeLabelRenderer, Handle, Position } from 'reactflow';
+import ReactFlow, { Background, Controls, ReactFlowProvider, getBezierPath, BaseEdge, EdgeLabelRenderer, Handle, Position } from 'reactflow';
 import 'reactflow/dist/style.css';
 import type { CaseData, ChatMessage, FlowNode, FlowEdge } from '../types';
 import { evaluateConversation } from '../api/caseApi';
@@ -106,16 +106,17 @@ const flowNodeTypes = { thought: ThoughtNode };
 // (Built-in markerEnd SVG defs were not rendering reliably, so we draw the triangle ourselves.)
 const flowEdgeTypes = {
   arrow: ({ sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, style, label }: any) => {
-    const [path, labelX, labelY] = getSmoothStepPath({ sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition });
-    // Edges enter the target from its LEFT handle, so the final approach is horizontal.
-    // Orient the arrowhead straight right and pull it back 3px so it doesn't touch the box.
-    const ux = 1;
-    const uy = 0;
+    // Rounded bezier curve for a smooth, organic look
+    const [path, labelX, labelY, offsetX, offsetY] = getBezierPath({ sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, curvature: 0.4 });
+    // Orient the arrowhead along the curve's end tangent (offsetX/offsetY)
+    const len = Math.hypot(offsetX, offsetY) || 1;
+    const ux = offsetX / len;
+    const uy = offsetY / len;
     const px = -uy;
     const py = ux;
     const size = 9;
-    const tipX = targetX;
-    const tipY = targetY - 3;
+    const tipX = targetX - ux * 3;
+    const tipY = targetY - uy * 3;
     const bX = tipX - ux * size + px * size * 0.6;
     const bY = tipY - uy * size + py * size * 0.6;
     const cX = tipX - ux * size - px * size * 0.6;
@@ -158,10 +159,9 @@ const flowEdgeTypes = {
 };
 
 function ensurePositions(nodes: FlowNode[], edges: FlowEdge[] = []) {
-  // Layered layout computed from the GRAPH TOPOLOGY (longest-path layering):
-  // nodes with no incoming edges start in column 0; each node sits one column
-  // right of its deepest parent. This matches the real flow of thought and
-  // keeps every edge short and horizontal — no crossing diagonals.
+  // RADIAL layout for a bird's-eye view: the problem node sits at the center,
+  // and each deeper layer radiates outward on a larger circle. This spreads
+  // the whole thought process across 2D so everything is visible at a glance.
   const idSet = new Set(nodes.map(n => n.id));
   const parents = new Map<string, string[]>();
   nodes.forEach(n => parents.set(n.id, []));
@@ -184,28 +184,42 @@ function ensurePositions(nodes: FlowNode[], edges: FlowEdge[] = []) {
   };
   nodes.forEach(n => computeLayer(n.id));
 
-  // Disperse nodes across the window: spread each layer's nodes vertically
-  // with generous spacing so converging arrows have room and nothing overlaps.
-  const rowByLayer = new Map<number, number>();
-  const layerCount = new Map<number, number>();
+  // Group nodes by layer
+  const byLayer = new Map<number, string[]>();
   nodes.forEach(n => {
     const L = layerOf.get(n.id) || 0;
-    layerCount.set(L, (layerCount.get(L) || 0) + 1);
+    if (!byLayer.has(L)) byLayer.set(L, []);
+    byLayer.get(L)!.push(n.id);
   });
+
+  const pos = new Map<string, { x: number; y: number }>();
+  const maxLayer = Math.max(0, ...Array.from(byLayer.keys()));
+  const radiusStep = 280;
+
+  byLayer.forEach((ids, L) => {
+    const count = ids.length;
+    if (L === 0) {
+      // Root at center
+      ids.forEach(id => pos.set(id, { x: 0, y: 0 }));
+      return;
+    }
+    const radius = L * radiusStep;
+    // Distribute nodes evenly around the circle, starting at top (-90deg)
+    ids.forEach((id, i) => {
+      const angle = (i / count) * Math.PI * 2 - Math.PI / 2;
+      pos.set(id, {
+        x: radius * Math.cos(angle),
+        y: radius * Math.sin(angle),
+      });
+    });
+  });
+
   return nodes.map(node => {
     if (node.position && typeof node.position.x === 'number' && typeof node.position.y === 'number') {
       return node;
     }
-    const L = layerOf.get(node.id) || 0;
-    const count = layerCount.get(L) || 1;
-    const row = rowByLayer.get(L) || 0;
-    rowByLayer.set(L, row + 1);
-    // Center the layer vertically: offset so the first node isn't at the very top
-    const yOffset = (count - 1) * 120;
-    return {
-      ...node,
-      position: { x: 40 + L * 360, y: 40 + row * 240 - yOffset }
-    };
+    const p = pos.get(node.id) || { x: 0, y: 0 };
+    return { ...node, position: p };
   });
 }
 
