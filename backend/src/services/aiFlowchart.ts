@@ -21,6 +21,15 @@ const VALID_TYPES = new Set([
   'problem', 'hypothesis', 'exploration', 'analysis', 'insight', 'recommendation', 'dead-end'
 ]);
 
+// Word-aware truncation: never cut mid-word, append ellipsis only when needed.
+function truncate(s: unknown, max: number): string {
+  const str = String(s ?? '').trim();
+  if (str.length <= max) return str;
+  const cut = str.slice(0, max);
+  const lastSpace = cut.lastIndexOf(' ');
+  return (lastSpace > max * 0.6 ? cut.slice(0, lastSpace) : cut) + '…';
+}
+
 /**
  * Reconstructs the candidate's ACTUAL thought process from the conversation
  * transcript using the LLM, producing a dynamic flowchart that reflects real
@@ -88,7 +97,7 @@ export async function generateAIFlowchart(
       .map(n => ({
         id: String(n.id),
         type: VALID_TYPES.has(n.type) ? n.type : 'analysis',
-        label: String(n.label).substring(0, 40),
+        label: truncate(n.label, 80),
         thoughtProcess: n.thoughtProcess ? String(n.thoughtProcess) : undefined,
         depth: typeof n.depth === 'number' ? Math.max(0, Math.min(9, n.depth)) : 0,
       }));
@@ -100,7 +109,7 @@ export async function generateAIFlowchart(
         id: `edge-${i}`,
         source: e.source,
         target: e.target,
-        label: e.label ? String(e.label).substring(0, 30) : '',
+        label: e.label ? truncate(e.label, 60) : '',
         reasoning: e.reasoning ? String(e.reasoning) : (e.label ? String(e.label) : ''),
       }));
 
