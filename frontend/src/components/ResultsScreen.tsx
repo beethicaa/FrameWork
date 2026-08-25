@@ -159,66 +159,60 @@ const flowEdgeTypes = {
 };
 
 function ensurePositions(nodes: FlowNode[], edges: FlowEdge[] = []) {
-  // RADIAL layout for a bird's-eye view: the problem node sits at the center,
-  // and each deeper layer radiates outward on a larger circle. This spreads
-  // the whole thought process across 2D so everything is visible at a glance.
+  // TREE layout for a bird's-eye view: the root sits at the top-center, and
+  // each child spreads below its parent, filling the 2D viewport so the whole
+  // thought process is visible at a glance without scrolling.
   const idSet = new Set(nodes.map(n => n.id));
+  const children = new Map<string, string[]>();
   const parents = new Map<string, string[]>();
-  nodes.forEach(n => parents.set(n.id, []));
-  edges.forEach(e => {
-    if (idSet.has(e.source) && idSet.has(e.target)) parents.get(e.target)!.push(e.source);
-  });
-
-  const layerOf = new Map<string, number>();
-  const visiting = new Set<string>();
-  const computeLayer = (id: string): number => {
-    const cached = layerOf.get(id);
-    if (cached !== undefined) return cached;
-    if (visiting.has(id)) return 0; // cycle guard
-    visiting.add(id);
-    const ps = parents.get(id) || [];
-    const d = ps.length ? Math.max(...ps.map(computeLayer)) + 1 : 0;
-    visiting.delete(id);
-    layerOf.set(id, d);
-    return d;
-  };
-  nodes.forEach(n => computeLayer(n.id));
-
-  // Group nodes by layer
-  const byLayer = new Map<number, string[]>();
   nodes.forEach(n => {
-    const L = layerOf.get(n.id) || 0;
-    if (!byLayer.has(L)) byLayer.set(L, []);
-    byLayer.get(L)!.push(n.id);
+    children.set(n.id, []);
+    parents.set(n.id, []);
+  });
+  edges.forEach(e => {
+    if (idSet.has(e.source) && idSet.has(e.target)) {
+      children.get(e.source)!.push(e.target);
+      parents.get(e.target)!.push(e.source);
+    }
   });
 
-  const pos = new Map<string, { x: number; y: number }>();
-  const radiusStep = 280;
+  // Find roots (nodes with no incoming edges)
+  const roots = nodes.filter(n => (parents.get(n.id) || []).length === 0).map(n => n.id);
+  const root = roots[0] || nodes[0]?.id;
 
-  byLayer.forEach((ids, L) => {
-    const count = ids.length;
-    if (L === 0) {
-      // Root at center
-      ids.forEach(id => pos.set(id, { x: 0, y: 0 }));
+  // Assign each node a column (x) via in-order traversal of the tree,
+  // and a row (y) = its depth. This spreads nodes across 2D.
+  const col = new Map<string, number>();
+  const depth = new Map<string, number>();
+  let nextCol = 0;
+
+  const visit = (id: string, d: number) => {
+    if (col.has(id)) return; // already placed (shared child)
+    depth.set(id, d);
+    const kids = children.get(id) || [];
+    if (kids.length === 0) {
+      col.set(id, nextCol++);
       return;
     }
-    const radius = L * radiusStep;
-    // Distribute nodes evenly around the circle, starting at top (-90deg)
-    ids.forEach((id, i) => {
-      const angle = (i / count) * Math.PI * 2 - Math.PI / 2;
-      pos.set(id, {
-        x: radius * Math.cos(angle),
-        y: radius * Math.sin(angle),
-      });
-    });
-  });
+    kids.forEach(k => visit(k, d + 1));
+    // Place parent centered over its children
+    const kidCols = kids.map(k => col.get(k) ?? 0);
+    col.set(id, (Math.min(...kidCols) + Math.max(...kidCols)) / 2);
+  };
 
+  if (root) visit(root, 0);
+  // Any nodes not reached (disconnected) get placed at the end
+  nodes.forEach(n => { if (!col.has(n.id)) visit(n.id, 0); });
+
+  const H = 240; // vertical spacing
+  const W = 300; // horizontal spacing
   return nodes.map(node => {
     if (node.position && typeof node.position.x === 'number' && typeof node.position.y === 'number') {
       return node;
     }
-    const p = pos.get(node.id) || { x: 0, y: 0 };
-    return { ...node, position: p };
+    const c = col.get(node.id) ?? 0;
+    const d = depth.get(node.id) ?? 0;
+    return { ...node, position: { x: c * W, y: d * H } };
   });
 }
 
