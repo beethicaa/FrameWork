@@ -193,7 +193,6 @@ function ensurePositions(nodes: FlowNode[], edges: FlowEdge[] = []) {
   });
 
   const pos = new Map<string, { x: number; y: number }>();
-  const maxLayer = Math.max(0, ...Array.from(byLayer.keys()));
   const radiusStep = 280;
 
   byLayer.forEach((ids, L) => {
