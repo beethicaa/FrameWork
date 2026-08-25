@@ -61,8 +61,9 @@ function ThoughtNode({ data }: { data: { label: string; nodeType: string; though
       minWidth: 200,
       maxWidth: 260,
     }}>
-      {/* Handles are REQUIRED for edges to attach to custom nodes — hidden visually */}
-      <Handle type="target" position={Position.Top} style={{ opacity: 0, width: 6, height: 6 }} />
+      {/* Handles are REQUIRED for edges to attach to custom nodes — hidden visually.
+          Left/Right placement gives a clean left-to-right flowchart flow. */}
+      <Handle type="target" position={Position.Left} style={{ opacity: 0, width: 6, height: 6 }} />
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         <div style={{
           width: 30, height: 30, borderRadius: 9,
@@ -94,7 +95,7 @@ function ThoughtNode({ data }: { data: { label: string; nodeType: string; though
           💭 {data.thoughtProcess}
         </p>
       )}
-      <Handle type="source" position={Position.Bottom} style={{ opacity: 0, width: 6, height: 6 }} />
+      <Handle type="source" position={Position.Right} style={{ opacity: 0, width: 6, height: 6 }} />
     </div>
   );
 }
@@ -106,10 +107,10 @@ const flowNodeTypes = { thought: ThoughtNode };
 const flowEdgeTypes = {
   arrow: ({ sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, style, label }: any) => {
     const [path, labelX, labelY] = getSmoothStepPath({ sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition });
-    // Edges enter the target from its TOP handle, so the final approach is vertical.
-    // Orient the arrowhead straight down and pull it back 3px so it doesn't touch the box.
-    const ux = 0;
-    const uy = 1;
+    // Edges enter the target from its LEFT handle, so the final approach is horizontal.
+    // Orient the arrowhead straight right and pull it back 3px so it doesn't touch the box.
+    const ux = 1;
+    const uy = 0;
     const px = -uy;
     const py = ux;
     const size = 9;
@@ -153,20 +154,44 @@ const flowEdgeTypes = {
   },
 };
 
-function ensurePositions(nodes: FlowNode[]) {
-  // Layout by depth tiers: each depth is a column flowing left-to-right,
-  // matching how the thinking progressed and keeping edges short & clean.
-  const depthCount = new Map<number, number>();
+function ensurePositions(nodes: FlowNode[], edges: FlowEdge[] = []) {
+  // Layered layout computed from the GRAPH TOPOLOGY (longest-path layering):
+  // nodes with no incoming edges start in column 0; each node sits one column
+  // right of its deepest parent. This matches the real flow of thought and
+  // keeps every edge short and horizontal — no crossing diagonals.
+  const idSet = new Set(nodes.map(n => n.id));
+  const parents = new Map<string, string[]>();
+  nodes.forEach(n => parents.set(n.id, []));
+  edges.forEach(e => {
+    if (idSet.has(e.source) && idSet.has(e.target)) parents.get(e.target)!.push(e.source);
+  });
+
+  const layerOf = new Map<string, number>();
+  const visiting = new Set<string>();
+  const computeLayer = (id: string): number => {
+    const cached = layerOf.get(id);
+    if (cached !== undefined) return cached;
+    if (visiting.has(id)) return 0; // cycle guard
+    visiting.add(id);
+    const ps = parents.get(id) || [];
+    const d = ps.length ? Math.max(...ps.map(computeLayer)) + 1 : 0;
+    visiting.delete(id);
+    layerOf.set(id, d);
+    return d;
+  };
+  nodes.forEach(n => computeLayer(n.id));
+
+  const rowByLayer = new Map<number, number>();
   return nodes.map(node => {
     if (node.position && typeof node.position.x === 'number' && typeof node.position.y === 'number') {
       return node;
     }
-    const depth = Math.max(0, Math.min(9, node.depth ?? 0));
-    const row = depthCount.get(depth) || 0;
-    depthCount.set(depth, row + 1);
+    const L = layerOf.get(node.id) || 0;
+    const row = rowByLayer.get(L) || 0;
+    rowByLayer.set(L, row + 1);
     return {
       ...node,
-      position: { x: 60 + depth * 320, y: 60 + row * 210 }
+      position: { x: 40 + L * 340, y: 50 + row * 230 }
     };
   });
 }
@@ -289,7 +314,7 @@ export default function ResultsScreen({
 
   const reactFlowNodes = useMemo(() => {
     if (!flowchart || !flowchart.nodes || flowchart.nodes.length === 0) return [];
-    return ensurePositions(flowchart.nodes).map(node => ({
+    return ensurePositions(flowchart.nodes, flowchart.edges).map(node => ({
       id: node.id,
       position: node.position || { x: 0, y: 0 },
       type: 'thought' as const,
