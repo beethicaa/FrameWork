@@ -64,17 +64,17 @@ export async function generateAIFlowchart(
     '- 4-10 nodes total, connected in sequence (branches allowed where the thinking split)',
     '',
     'LABEL QUALITY (critical):',
-    '- A node label must describe the SPECIFIC analytical content of that step, e.g.',
-    '  GOOD: "Revenue = price x volume tree", "Test $12 price vs $15 cost", "Segment: urban millennials"',
-    '  BAD (never do this): "candidate", "ask", "refine", "plan", "question", "response", "Initial Hypothesis" repeated verbatim from the transcript greeting',
+    '- A node label must be a SHORT, COMPLETE summary of that step — 3 to 6 words max, no truncation needed.',
+    '  GOOD: "Revenue vs cost tree", "Test $12 vs $15 price", "Urban millennial segment", "Rent doubled"',
+    '  BAD (never do this): "candidate", "ask", "refine", "plan", "question", "response", or any long sentence that would need an ellipsis',
     '- Never use speaker names, conversation mechanics, or single generic words as labels',
-    '- An edge label must describe HOW or WHY the thinking moved to the next step, e.g.',
-    '  GOOD: "tested vs margin data", "contradicted by costs", "validated with user data", "split by segment"',
-    '  BAD (never do this): "candidate", "refine", "ask", "plan", "then", "next"',
+    '- An edge label must be a SHORT, COMPLETE phrase (2-4 words) describing HOW or WHY the thinking moved, e.g.',
+    '  GOOD: "tested vs margin", "contradicted by costs", "validated by data", "split by segment"',
+    '  BAD (never do this): "candidate", "refine", "ask", "plan", "then", "next", or long sentences',
     '',
     'Example of a good chart for a coffee-shop profitability case:',
-    'nodes: problem("Why are profits down 20%?") -> analysis("Break down revenue vs costs") -> insight("Rent doubled after relocation") -> analysis("Check if footfall offset rent") -> recommendation("Renegotiate lease or relocate")',
-    'edge labels: "structure the P&L", "rent is the outlier", "quantify traffic change", "data supports move"',
+    'nodes: problem("Why profits down 20%?") -> analysis("Break down P&L") -> insight("Rent doubled") -> analysis("Footfall vs rent") -> recommendation("Renegotiate lease")',
+    'edge labels: "structure P&L", "rent is outlier", "quantify traffic", "data supports move"',
   ].join(NL);
 
   try {
@@ -97,7 +97,7 @@ export async function generateAIFlowchart(
       .map(n => ({
         id: String(n.id),
         type: VALID_TYPES.has(n.type) ? n.type : 'analysis',
-        label: truncate(n.label, 80),
+        label: truncate(n.label, 60),
         thoughtProcess: n.thoughtProcess ? String(n.thoughtProcess) : undefined,
         depth: typeof n.depth === 'number' ? Math.max(0, Math.min(9, n.depth)) : 0,
       }));
@@ -109,7 +109,7 @@ export async function generateAIFlowchart(
         id: `edge-${i}`,
         source: e.source,
         target: e.target,
-        label: e.label ? truncate(e.label, 60) : '',
+        label: e.label ? truncate(e.label, 40) : '',
         reasoning: e.reasoning ? String(e.reasoning) : (e.label ? String(e.label) : ''),
       }));
 

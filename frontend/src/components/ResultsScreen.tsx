@@ -139,11 +139,13 @@ const flowEdgeTypes = {
                 borderRadius: 5,
                 fontSize: 9,
                 zIndex: 4,
-                maxWidth: 180,
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
+                maxWidth: 160,
                 pointerEvents: 'none' as const,
-                whiteSpace: 'nowrap',
+                // Wrap onto multiple lines instead of ellipsis so text never overlaps
+                whiteSpace: 'normal',
+                wordBreak: 'break-word',
+                lineHeight: 1.3,
+                textAlign: 'center',
               }}
             >
               {label}
@@ -182,17 +184,27 @@ function ensurePositions(nodes: FlowNode[], edges: FlowEdge[] = []) {
   };
   nodes.forEach(n => computeLayer(n.id));
 
+  // Disperse nodes across the window: spread each layer's nodes vertically
+  // with generous spacing so converging arrows have room and nothing overlaps.
   const rowByLayer = new Map<number, number>();
+  const layerCount = new Map<number, number>();
+  nodes.forEach(n => {
+    const L = layerOf.get(n.id) || 0;
+    layerCount.set(L, (layerCount.get(L) || 0) + 1);
+  });
   return nodes.map(node => {
     if (node.position && typeof node.position.x === 'number' && typeof node.position.y === 'number') {
       return node;
     }
     const L = layerOf.get(node.id) || 0;
+    const count = layerCount.get(L) || 1;
     const row = rowByLayer.get(L) || 0;
     rowByLayer.set(L, row + 1);
+    // Center the layer vertically: offset so the first node isn't at the very top
+    const yOffset = (count - 1) * 120;
     return {
       ...node,
-      position: { x: 40 + L * 340, y: 50 + row * 230 }
+      position: { x: 40 + L * 360, y: 40 + row * 240 - yOffset }
     };
   });
 }
