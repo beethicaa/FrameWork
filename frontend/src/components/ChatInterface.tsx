@@ -209,20 +209,35 @@ export default function ChatInterface({ caseData, userRole, difficulty, onBack, 
       const data = await fetchFlowchart(sessionId);
       setFlowchart(prev => {
         if (!prev || !prev.nodes || prev.nodes.length === 0) return data;
-        // Merge cumulatively: keep every finding ever discovered, add only new ones.
-        // The AI regenerates node ids each poll, so match by normalized label.
+        // Merge cumulatively but with FUZZY matching: the AI regenerates slightly
+        // different labels each poll, so match by token overlap instead of exact
+        // string equality. This collapses near-duplicate nodes into one instead of
+        // appending a bloated list of near-identical steps.
         const norm = (t: string) => t.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
-        const byLabel = new Map(prev.nodes.map(n => [norm(n.label), n]));
+        const tokens = (t: string) => norm(t).split(' ').filter(Boolean);
+        const similarity = (a: string, b: string) => {
+          const ta = tokens(a), tb = tokens(b);
+          if (ta.length === 0 || tb.length === 0) return 0;
+          const setB = new Set(tb);
+          const overlap = ta.filter(w => setB.has(w)).length;
+          return overlap / Math.max(ta.length, tb.length);
+        };
+        const existing = [...prev.nodes];
         const idMap = new Map<string, string>();
-        const mergedNodes = [...prev.nodes];
+        const mergedNodes = [...existing];
         for (const n of data.nodes) {
-          const key = norm(n.label);
-          const match = byLabel.get(key);
-          if (match) {
-            idMap.set(n.id, match.id);
+          // Find the best existing match by similarity
+          let bestIdx = -1, bestScore = 0;
+          for (let i = 0; i < existing.length; i++) {
+            const s = similarity(n.label, existing[i].label);
+            if (s > bestScore) { bestScore = s; bestIdx = i; }
+          }
+          if (bestIdx >= 0 && bestScore >= 0.45) {
+            // Near-duplicate: reuse the existing node id
+            idMap.set(n.id, existing[bestIdx].id);
           } else {
             mergedNodes.push(n);
-            byLabel.set(key, n);
+            existing.push(n);
             idMap.set(n.id, n.id);
           }
         }
@@ -236,6 +251,11 @@ export default function ChatInterface({ caseData, userRole, difficulty, onBack, 
             mergedEdges.push({ ...e, source: src, target: tgt });
             seenEdges.add(key);
           }
+        }
+        // Cap total nodes so the chart stays compact and readable
+        const MAX = 12;
+        if (mergedNodes.length > MAX) {
+          return { nodes: mergedNodes.slice(0, MAX), edges: mergedEdges };
         }
         return { nodes: mergedNodes, edges: mergedEdges };
       });

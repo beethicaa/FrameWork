@@ -159,60 +159,98 @@ const flowEdgeTypes = {
 };
 
 function ensurePositions(nodes: FlowNode[], edges: FlowEdge[] = []) {
-  // TREE layout for a bird's-eye view: the root sits at the top-center, and
-  // each child spreads below its parent, filling the 2D viewport so the whole
-  // thought process is visible at a glance without scrolling.
+  // COMPACT FORCE-DIRECTED layout for a true bird's-eye view: nodes are placed
+  // in a tight cluster that fits the viewport, with connected nodes pulled close
+  // and unconnected nodes pushed apart. Everything is visible at a glance.
   const idSet = new Set(nodes.map(n => n.id));
-  const children = new Map<string, string[]>();
-  const parents = new Map<string, string[]>();
-  nodes.forEach(n => {
-    children.set(n.id, []);
-    parents.set(n.id, []);
-  });
+  const edgeSet = new Set<string>();
   edges.forEach(e => {
     if (idSet.has(e.source) && idSet.has(e.target)) {
-      children.get(e.source)!.push(e.target);
-      parents.get(e.target)!.push(e.source);
+      edgeSet.add(e.source + '|' + e.target);
+      edgeSet.add(e.target + '|' + e.source);
     }
   });
 
-  // Find roots (nodes with no incoming edges)
-  const roots = nodes.filter(n => (parents.get(n.id) || []).length === 0).map(n => n.id);
-  const root = roots[0] || nodes[0]?.id;
+  // Start positions: place nodes in a small circle so the simulation converges fast
+  const pos = new Map<string, { x: number; y: number }>();
+  nodes.forEach((n, i) => {
+    const angle = (i / Math.max(1, nodes.length)) * Math.PI * 2;
+    pos.set(n.id, { x: Math.cos(angle) * 120, y: Math.sin(angle) * 120 });
+  });
 
-  // Assign each node a column (x) via in-order traversal of the tree,
-  // and a row (y) = its depth. This spreads nodes across 2D.
-  const col = new Map<string, number>();
-  const depth = new Map<string, number>();
-  let nextCol = 0;
+  // Simple force-directed relaxation (a few iterations is enough for a compact cluster)
+  const REPULSION = 9000;
+  const ATTRACTION = 0.06;
+  const CENTER = 0.02;
+  const ITERATIONS = 60;
 
-  const visit = (id: string, d: number) => {
-    if (col.has(id)) return; // already placed (shared child)
-    depth.set(id, d);
-    const kids = children.get(id) || [];
-    if (kids.length === 0) {
-      col.set(id, nextCol++);
-      return;
+  for (let iter = 0; iter < ITERATIONS; iter++) {
+    const forces = new Map<string, { x: number; y: number }>();
+    nodes.forEach(n => forces.set(n.id, { x: 0, y: 0 }));
+
+    // Repulsion between all pairs
+    for (let i = 0; i < nodes.length; i++) {
+      for (let j = i + 1; j < nodes.length; j++) {
+        const a = pos.get(nodes[i].id)!;
+        const b = pos.get(nodes[j].id)!;
+        let dx = a.x - b.x;
+        let dy = a.y - b.y;
+        const dist = Math.max(1, Math.hypot(dx, dy));
+        const force = REPULSION / (dist * dist);
+        dx /= dist; dy /= dist;
+        forces.get(nodes[i].id)!.x += dx * force;
+        forces.get(nodes[i].id)!.y += dy * force;
+        forces.get(nodes[j].id)!.x -= dx * force;
+        forces.get(nodes[j].id)!.y -= dy * force;
+      }
     }
-    kids.forEach(k => visit(k, d + 1));
-    // Place parent centered over its children
-    const kidCols = kids.map(k => col.get(k) ?? 0);
-    col.set(id, (Math.min(...kidCols) + Math.max(...kidCols)) / 2);
-  };
 
-  if (root) visit(root, 0);
-  // Any nodes not reached (disconnected) get placed at the end
-  nodes.forEach(n => { if (!col.has(n.id)) visit(n.id, 0); });
+    // Attraction along edges
+    edges.forEach(e => {
+      if (!edgeSet.has(e.source + '|' + e.target)) return;
+      const a = pos.get(e.source)!;
+      const b = pos.get(e.target)!;
+      const dx = b.x - a.x;
+      const dy = b.y - a.y;
+      forces.get(e.source)!.x += dx * ATTRACTION;
+      forces.get(e.source)!.y += dy * ATTRACTION;
+      forces.get(e.target)!.x -= dx * ATTRACTION;
+      forces.get(e.target)!.y -= dy * ATTRACTION;
+    });
 
-  const H = 240; // vertical spacing
-  const W = 300; // horizontal spacing
+    // Gentle pull toward center to keep the cluster compact
+    nodes.forEach(n => {
+      const p = pos.get(n.id)!;
+      forces.get(n.id)!.x -= p.x * CENTER;
+      forces.get(n.id)!.y -= p.y * CENTER;
+    });
+
+    // Apply forces
+    nodes.forEach(n => {
+      const p = pos.get(n.id)!;
+      const f = forces.get(n.id)!;
+      p.x += f.x;
+      p.y += f.y;
+    });
+  }
+
+  // Normalize so the cluster is centered around (0,0) and scaled to fit
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+  nodes.forEach(n => {
+    const p = pos.get(n.id)!;
+    minX = Math.min(minX, p.x); maxX = Math.max(maxX, p.x);
+    minY = Math.min(minY, p.y); maxY = Math.max(maxY, p.y);
+  });
+  const cx = (minX + maxX) / 2;
+  const cy = (minY + maxY) / 2;
+  const scale = 300 / Math.max(1, Math.max(maxX - minX, maxY - minY));
+
   return nodes.map(node => {
     if (node.position && typeof node.position.x === 'number' && typeof node.position.y === 'number') {
       return node;
     }
-    const c = col.get(node.id) ?? 0;
-    const d = depth.get(node.id) ?? 0;
-    return { ...node, position: { x: c * W, y: d * H } };
+    const p = pos.get(node.id)!;
+    return { ...node, position: { x: (p.x - cx) * scale, y: (p.y - cy) * scale } };
   });
 }
 
