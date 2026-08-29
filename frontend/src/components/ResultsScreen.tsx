@@ -159,98 +159,59 @@ const flowEdgeTypes = {
 };
 
 function ensurePositions(nodes: FlowNode[], edges: FlowEdge[] = []) {
-  // COMPACT FORCE-DIRECTED layout for a true bird's-eye view: nodes are placed
-  // in a tight cluster that fits the viewport, with connected nodes pulled close
-  // and unconnected nodes pushed apart. Everything is visible at a glance.
+  // BALANCED LAYERED layout for a clean bird's-eye view: each reasoning depth
+  // becomes a column, nodes within a column are spread vertically and centered,
+  // so the whole graph reads left-to-right without clumping or scrolling.
   const idSet = new Set(nodes.map(n => n.id));
-  const edgeSet = new Set<string>();
+  const parents = new Map<string, string[]>();
+  nodes.forEach(n => parents.set(n.id, []));
   edges.forEach(e => {
-    if (idSet.has(e.source) && idSet.has(e.target)) {
-      edgeSet.add(e.source + '|' + e.target);
-      edgeSet.add(e.target + '|' + e.source);
-    }
+    if (idSet.has(e.source) && idSet.has(e.target)) parents.get(e.target)!.push(e.source);
   });
 
-  // Start positions: place nodes in a small circle so the simulation converges fast
-  const pos = new Map<string, { x: number; y: number }>();
-  nodes.forEach((n, i) => {
-    const angle = (i / Math.max(1, nodes.length)) * Math.PI * 2;
-    pos.set(n.id, { x: Math.cos(angle) * 120, y: Math.sin(angle) * 120 });
-  });
+  // Longest-path layering: a node's layer = deepest parent + 1
+  const layerOf = new Map<string, number>();
+  const visiting = new Set<string>();
+  const computeLayer = (id: string): number => {
+    const cached = layerOf.get(id);
+    if (cached !== undefined) return cached;
+    if (visiting.has(id)) return 0; // cycle guard
+    visiting.add(id);
+    const ps = parents.get(id) || [];
+    const d = ps.length ? Math.max(...ps.map(computeLayer)) + 1 : 0;
+    visiting.delete(id);
+    layerOf.set(id, d);
+    return d;
+  };
+  nodes.forEach(n => computeLayer(n.id));
 
-  // Simple force-directed relaxation (a few iterations is enough for a compact cluster)
-  const REPULSION = 9000;
-  const ATTRACTION = 0.06;
-  const CENTER = 0.02;
-  const ITERATIONS = 60;
-
-  for (let iter = 0; iter < ITERATIONS; iter++) {
-    const forces = new Map<string, { x: number; y: number }>();
-    nodes.forEach(n => forces.set(n.id, { x: 0, y: 0 }));
-
-    // Repulsion between all pairs
-    for (let i = 0; i < nodes.length; i++) {
-      for (let j = i + 1; j < nodes.length; j++) {
-        const a = pos.get(nodes[i].id)!;
-        const b = pos.get(nodes[j].id)!;
-        let dx = a.x - b.x;
-        let dy = a.y - b.y;
-        const dist = Math.max(1, Math.hypot(dx, dy));
-        const force = REPULSION / (dist * dist);
-        dx /= dist; dy /= dist;
-        forces.get(nodes[i].id)!.x += dx * force;
-        forces.get(nodes[i].id)!.y += dy * force;
-        forces.get(nodes[j].id)!.x -= dx * force;
-        forces.get(nodes[j].id)!.y -= dy * force;
-      }
-    }
-
-    // Attraction along edges
-    edges.forEach(e => {
-      if (!edgeSet.has(e.source + '|' + e.target)) return;
-      const a = pos.get(e.source)!;
-      const b = pos.get(e.target)!;
-      const dx = b.x - a.x;
-      const dy = b.y - a.y;
-      forces.get(e.source)!.x += dx * ATTRACTION;
-      forces.get(e.source)!.y += dy * ATTRACTION;
-      forces.get(e.target)!.x -= dx * ATTRACTION;
-      forces.get(e.target)!.y -= dy * ATTRACTION;
-    });
-
-    // Gentle pull toward center to keep the cluster compact
-    nodes.forEach(n => {
-      const p = pos.get(n.id)!;
-      forces.get(n.id)!.x -= p.x * CENTER;
-      forces.get(n.id)!.y -= p.y * CENTER;
-    });
-
-    // Apply forces
-    nodes.forEach(n => {
-      const p = pos.get(n.id)!;
-      const f = forces.get(n.id)!;
-      p.x += f.x;
-      p.y += f.y;
-    });
-  }
-
-  // Normalize so the cluster is centered around (0,0) and scaled to fit
-  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+  // Group node ids by layer
+  const byLayer = new Map<number, string[]>();
   nodes.forEach(n => {
-    const p = pos.get(n.id)!;
-    minX = Math.min(minX, p.x); maxX = Math.max(maxX, p.x);
-    minY = Math.min(minY, p.y); maxY = Math.max(maxY, p.y);
+    const L = layerOf.get(n.id) || 0;
+    if (!byLayer.has(L)) byLayer.set(L, []);
+    byLayer.get(L)!.push(n.id);
   });
-  const cx = (minX + maxX) / 2;
-  const cy = (minY + maxY) / 2;
-  const scale = 300 / Math.max(1, Math.max(maxX - minX, maxY - minY));
+
+  const pos = new Map<string, { x: number; y: number }>();
+  const COL_W = 340;   // horizontal spacing between layers
+  const ROW_H = 220;   // vertical spacing within a layer
+
+  byLayer.forEach((ids, L) => {
+    const count = ids.length;
+    // Vertically center the column: first node offset so the group is centered
+    const yOffset = ((count - 1) * ROW_H) / 2;
+    ids.forEach((id, i) => {
+      pos.set(id, { x: L * COL_W, y: i * ROW_H - yOffset });
+    });
+  });
 
   return nodes.map(node => {
     if (node.position && typeof node.position.x === 'number' && typeof node.position.y === 'number') {
       return node;
     }
-    const p = pos.get(node.id)!;
-    return { ...node, position: { x: (p.x - cx) * scale, y: (p.y - cy) * scale } };
+    const p = pos.get(node.id) || { x: 0, y: 0 };
+    return { ...node, position: p };
   });
 }
 

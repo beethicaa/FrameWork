@@ -226,15 +226,23 @@ export default function ChatInterface({ caseData, userRole, difficulty, onBack, 
         const idMap = new Map<string, string>();
         const mergedNodes = [...existing];
         for (const n of data.nodes) {
-          // Find the best existing match by similarity
+          // Find the best existing match by similarity — but only merge when
+          // labels are VERY similar (>=0.7). This prevents distinct steps from
+          // being collapsed, so the chart keeps growing as the conversation
+          // progresses instead of freezing after a few exchanges.
           let bestIdx = -1, bestScore = 0;
           for (let i = 0; i < existing.length; i++) {
             const s = similarity(n.label, existing[i].label);
             if (s > bestScore) { bestScore = s; bestIdx = i; }
           }
-          if (bestIdx >= 0 && bestScore >= 0.45) {
-            // Near-duplicate: reuse the existing node id
-            idMap.set(n.id, existing[bestIdx].id);
+          if (bestIdx >= 0 && bestScore >= 0.7) {
+            // True duplicate: reuse the existing node id, but prefer the newer
+            // label if it's more descriptive
+            const existingNode = existing[bestIdx];
+            if (n.label.length > existingNode.label.length) {
+              existingNode.label = n.label;
+            }
+            idMap.set(n.id, existingNode.id);
           } else {
             mergedNodes.push(n);
             existing.push(n);
@@ -252,11 +260,7 @@ export default function ChatInterface({ caseData, userRole, difficulty, onBack, 
             seenEdges.add(key);
           }
         }
-        // Cap total nodes so the chart stays compact and readable
-        const MAX = 12;
-        if (mergedNodes.length > MAX) {
-          return { nodes: mergedNodes.slice(0, MAX), edges: mergedEdges };
-        }
+        // No hard cap — the chart keeps growing with genuinely new steps.
         return { nodes: mergedNodes, edges: mergedEdges };
       });
     } catch { /* ignore polling errors */ }
