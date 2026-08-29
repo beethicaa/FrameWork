@@ -159,59 +159,71 @@ const flowEdgeTypes = {
 };
 
 function ensurePositions(nodes: FlowNode[], edges: FlowEdge[] = []) {
-  // TIDY TREE layout — the professional diagram standard (like Visio/draw.io):
-  // root at top-center, children evenly spaced below their parent, each parent
-  // centered over its children. Clean, neat, and everything fits the viewport.
+  // CLEAN GRID layout — professional and always fits the viewport.
+  // Nodes are grouped by depth (reasoning stage), arranged in centered rows,
+  // and wrap to multiple columns per row when needed. No sprawling, no clumping.
   const idSet = new Set(nodes.map(n => n.id));
-  const children = new Map<string, string[]>();
   const parents = new Map<string, string[]>();
-  nodes.forEach(n => {
-    children.set(n.id, []);
-    parents.set(n.id, []);
-  });
+  nodes.forEach(n => parents.set(n.id, []));
   edges.forEach(e => {
-    if (idSet.has(e.source) && idSet.has(e.target)) {
-      children.get(e.source)!.push(e.target);
-      parents.get(e.target)!.push(e.source);
-    }
+    if (idSet.has(e.source) && idSet.has(e.target)) parents.get(e.target)!.push(e.source);
   });
 
-  // Find the root (node with no incoming edges)
-  const roots = nodes.filter(n => (parents.get(n.id) || []).length === 0).map(n => n.id);
-  const root = roots[0] || nodes[0]?.id;
-
-  // Post-order traversal: leaves get sequential columns, parents centered over children
-  const col = new Map<string, number>();
-  const depth = new Map<string, number>();
-  let nextCol = 0;
-
-  const visit = (id: string, d: number) => {
-    if (col.has(id)) return; // already placed (shared child)
-    depth.set(id, d);
-    const kids = children.get(id) || [];
-    if (kids.length === 0) {
-      col.set(id, nextCol++);
-      return;
-    }
-    kids.forEach(k => visit(k, d + 1));
-    const kidCols = kids.map(k => col.get(k) ?? 0);
-    col.set(id, (Math.min(...kidCols) + Math.max(...kidCols)) / 2);
+  // Compute depth via longest path from a root
+  const depthOf = new Map<string, number>();
+  const visiting = new Set<string>();
+  const computeDepth = (id: string): number => {
+    const cached = depthOf.get(id);
+    if (cached !== undefined) return cached;
+    if (visiting.has(id)) return 0;
+    visiting.add(id);
+    const ps = parents.get(id) || [];
+    const d = ps.length ? Math.max(...ps.map(computeDepth)) + 1 : 0;
+    visiting.delete(id);
+    depthOf.set(id, d);
+    return d;
   };
+  nodes.forEach(n => computeDepth(n.id));
 
-  if (root) visit(root, 0);
-  // Any disconnected nodes get placed at the end
-  nodes.forEach(n => { if (!col.has(n.id)) visit(n.id, 0); });
+  // Group nodes by depth
+  const byDepth = new Map<number, FlowNode[]>();
+  nodes.forEach(n => {
+    const d = depthOf.get(n.id) ?? 0;
+    if (!byDepth.has(d)) byDepth.set(d, []);
+    byDepth.get(d)!.push(n);
+  });
 
-  const COL_W = 280; // horizontal spacing between columns
-  const ROW_H = 200; // vertical spacing between depth levels
+  const COL_W = 300;
+  const ROW_H = 210;
+  const MAX_PER_ROW = 3; // wrap to next row if more than this at one depth
+
+  const pos = new Map<string, { x: number; y: number }>();
+  let globalRow = 0;
+
+  const sortedDepths = Array.from(byDepth.keys()).sort((a, b) => a - b);
+  sortedDepths.forEach(d => {
+    const group = byDepth.get(d)!;
+    // Split into chunks of MAX_PER_ROW
+    const chunks: FlowNode[][] = [];
+    for (let i = 0; i < group.length; i += MAX_PER_ROW) {
+      chunks.push(group.slice(i, i + MAX_PER_ROW));
+    }
+    chunks.forEach(chunk => {
+      const totalWidth = (chunk.length - 1) * COL_W;
+      const startX = -totalWidth / 2;
+      chunk.forEach((n, i) => {
+        pos.set(n.id, { x: startX + i * COL_W, y: globalRow * ROW_H });
+      });
+      globalRow++;
+    });
+  });
 
   return nodes.map(node => {
     if (node.position && typeof node.position.x === 'number' && typeof node.position.y === 'number') {
       return node;
     }
-    const c = col.get(node.id) ?? 0;
-    const d = depth.get(node.id) ?? 0;
-    return { ...node, position: { x: c * COL_W, y: d * ROW_H } };
+    const p = pos.get(node.id) || { x: 0, y: 0 };
+    return { ...node, position: p };
   });
 }
 
