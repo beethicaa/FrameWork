@@ -18,6 +18,7 @@ interface ChatSession {
   hypothesisTested: boolean;
   quantitativeAnalysis: boolean;
   aiFlowchart?: { nodes: any[]; edges: any[] } | null;
+  flowchartDirty?: boolean;
 }
 
 const sessions = new Map<string, ChatSession>();
@@ -472,7 +473,10 @@ export async function processChat(
   }
 
   sessions.set(sessionId, session);
-  // Regenerate the AI thought-process flowchart in the background (one at a time per session)
+  // Regenerate the AI thought-process flowchart in the background (one at a time per session).
+  // If a generation is already in flight, mark the session dirty so we re-run with the
+  // LATEST messages as soon as the current one finishes — this prevents the chart from
+  // freezing when the user sends several messages during a slow Groq call.
   if (!flowchartInFlight.has(sessionId)) {
     flowchartInFlight.add(sessionId);
     void generateAIFlowchart(session.messages).then(chart => {
@@ -483,7 +487,29 @@ export async function processChat(
           sessions.set(sessionId, s);
         }
       }
-    }).finally(() => flowchartInFlight.delete(sessionId));
+    }).finally(() => {
+      flowchartInFlight.delete(sessionId);
+      // If new messages arrived while we were generating, re-run immediately
+      const s = sessions.get(sessionId);
+      if (s && s.flowchartDirty) {
+        s.flowchartDirty = false;
+        sessions.set(sessionId, s);
+        flowchartInFlight.add(sessionId);
+        void generateAIFlowchart(s.messages).then(chart => {
+          if (chart) {
+            const s2 = sessions.get(sessionId);
+            if (s2) {
+              s2.aiFlowchart = chart;
+              sessions.set(sessionId, s2);
+            }
+          }
+        }).finally(() => flowchartInFlight.delete(sessionId));
+      }
+    });
+  } else {
+    // A generation is already in flight — mark dirty so we re-run after it completes
+    session.flowchartDirty = true;
+    sessions.set(sessionId, session);
   }
   return { reply, sessionId };
 }
