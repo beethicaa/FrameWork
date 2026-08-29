@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo } from 'react';
-import ReactFlow, { Background, Controls, ReactFlowProvider, getBezierPath, BaseEdge, EdgeLabelRenderer, Handle, Position } from 'reactflow';
+import ReactFlow, { Background, Controls, ReactFlowProvider, getSmoothStepPath, BaseEdge, EdgeLabelRenderer, Handle, Position } from 'reactflow';
 import 'reactflow/dist/style.css';
 import type { CaseData, ChatMessage, FlowNode, FlowEdge } from '../types';
 import { evaluateConversation } from '../api/caseApi';
@@ -106,12 +106,12 @@ const flowNodeTypes = { thought: ThoughtNode };
 // (Built-in markerEnd SVG defs were not rendering reliably, so we draw the triangle ourselves.)
 const flowEdgeTypes = {
   arrow: ({ sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, style, label }: any) => {
-    // Rounded bezier curve for a smooth, organic look
-    const [path, labelX, labelY, offsetX, offsetY] = getBezierPath({ sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, curvature: 0.4 });
-    // Orient the arrowhead along the curve's end tangent (offsetX/offsetY)
-    const len = Math.hypot(offsetX, offsetY) || 1;
-    const ux = offsetX / len;
-    const uy = offsetY / len;
+    // Clean orthogonal (right-angle) path — the professional diagram look
+    const [path, labelX, labelY] = getSmoothStepPath({ sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, borderRadius: 6 });
+    // Edges enter the target from its LEFT handle, so the final approach is horizontal.
+    // Orient the arrowhead straight right and pull it back 3px so it doesn't touch the box.
+    const ux = 1;
+    const uy = 0;
     const px = -uy;
     const py = ux;
     const size = 9;
@@ -159,69 +159,59 @@ const flowEdgeTypes = {
 };
 
 function ensurePositions(nodes: FlowNode[], edges: FlowEdge[] = []) {
-  // GOLDEN-ANGLE SPIRAL layout for a true 2D bird's-eye view: the root sits at
-  // the center and every other node spirals outward, filling the viewport
-  // compactly in both dimensions — no long lines, no scrolling.
+  // TIDY TREE layout — the professional diagram standard (like Visio/draw.io):
+  // root at top-center, children evenly spaced below their parent, each parent
+  // centered over its children. Clean, neat, and everything fits the viewport.
   const idSet = new Set(nodes.map(n => n.id));
+  const children = new Map<string, string[]>();
   const parents = new Map<string, string[]>();
-  nodes.forEach(n => parents.set(n.id, []));
+  nodes.forEach(n => {
+    children.set(n.id, []);
+    parents.set(n.id, []);
+  });
   edges.forEach(e => {
-    if (idSet.has(e.source) && idSet.has(e.target)) parents.get(e.target)!.push(e.source);
+    if (idSet.has(e.source) && idSet.has(e.target)) {
+      children.get(e.source)!.push(e.target);
+      parents.get(e.target)!.push(e.source);
+    }
   });
 
-  // Longest-path layering so we can order the spiral by reasoning depth
-  const layerOf = new Map<string, number>();
-  const visiting = new Set<string>();
-  const computeLayer = (id: string): number => {
-    const cached = layerOf.get(id);
-    if (cached !== undefined) return cached;
-    if (visiting.has(id)) return 0; // cycle guard
-    visiting.add(id);
-    const ps = parents.get(id) || [];
-    const d = ps.length ? Math.max(...ps.map(computeLayer)) + 1 : 0;
-    visiting.delete(id);
-    layerOf.set(id, d);
-    return d;
-  };
-  nodes.forEach(n => computeLayer(n.id));
+  // Find the root (node with no incoming edges)
+  const roots = nodes.filter(n => (parents.get(n.id) || []).length === 0).map(n => n.id);
+  const root = roots[0] || nodes[0]?.id;
 
-  // Sort by depth so the spiral grows outward from the problem
-  const sorted = [...nodes].sort((a, b) => (layerOf.get(a.id) || 0) - (layerOf.get(b.id) || 0));
+  // Post-order traversal: leaves get sequential columns, parents centered over children
+  const col = new Map<string, number>();
+  const depth = new Map<string, number>();
+  let nextCol = 0;
 
-  const pos = new Map<string, { x: number; y: number }>();
-  const goldenAngle = Math.PI * (3 - Math.sqrt(5)); // ~2.399 rad
-  const SPACING = 95;
-
-  sorted.forEach((n, i) => {
-    if (i === 0) {
-      pos.set(n.id, { x: 0, y: 0 });
+  const visit = (id: string, d: number) => {
+    if (col.has(id)) return; // already placed (shared child)
+    depth.set(id, d);
+    const kids = children.get(id) || [];
+    if (kids.length === 0) {
+      col.set(id, nextCol++);
       return;
     }
-    const radius = SPACING * Math.sqrt(i);
-    const angle = i * goldenAngle;
-    pos.set(n.id, {
-      x: radius * Math.cos(angle),
-      y: radius * Math.sin(angle),
-    });
-  });
+    kids.forEach(k => visit(k, d + 1));
+    const kidCols = kids.map(k => col.get(k) ?? 0);
+    col.set(id, (Math.min(...kidCols) + Math.max(...kidCols)) / 2);
+  };
 
-  // Normalize so the cluster is centered and fits a ~600px box
-  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-  nodes.forEach(n => {
-    const p = pos.get(n.id)!;
-    minX = Math.min(minX, p.x); maxX = Math.max(maxX, p.x);
-    minY = Math.min(minY, p.y); maxY = Math.max(maxY, p.y);
-  });
-  const cx = (minX + maxX) / 2;
-  const cy = (minY + maxY) / 2;
-  const scale = 300 / Math.max(1, Math.max(maxX - minX, maxY - minY));
+  if (root) visit(root, 0);
+  // Any disconnected nodes get placed at the end
+  nodes.forEach(n => { if (!col.has(n.id)) visit(n.id, 0); });
+
+  const COL_W = 280; // horizontal spacing between columns
+  const ROW_H = 200; // vertical spacing between depth levels
 
   return nodes.map(node => {
     if (node.position && typeof node.position.x === 'number' && typeof node.position.y === 'number') {
       return node;
     }
-    const p = pos.get(node.id)!;
-    return { ...node, position: { x: (p.x - cx) * scale, y: (p.y - cy) * scale } };
+    const c = col.get(node.id) ?? 0;
+    const d = depth.get(node.id) ?? 0;
+    return { ...node, position: { x: c * COL_W, y: d * ROW_H } };
   });
 }
 
