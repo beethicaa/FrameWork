@@ -159,9 +159,9 @@ const flowEdgeTypes = {
 };
 
 function ensurePositions(nodes: FlowNode[], edges: FlowEdge[] = []) {
-  // BALANCED LAYERED layout for a clean bird's-eye view: each reasoning depth
-  // becomes a column, nodes within a column are spread vertically and centered,
-  // so the whole graph reads left-to-right without clumping or scrolling.
+  // GOLDEN-ANGLE SPIRAL layout for a true 2D bird's-eye view: the root sits at
+  // the center and every other node spirals outward, filling the viewport
+  // compactly in both dimensions — no long lines, no scrolling.
   const idSet = new Set(nodes.map(n => n.id));
   const parents = new Map<string, string[]>();
   nodes.forEach(n => parents.set(n.id, []));
@@ -169,7 +169,7 @@ function ensurePositions(nodes: FlowNode[], edges: FlowEdge[] = []) {
     if (idSet.has(e.source) && idSet.has(e.target)) parents.get(e.target)!.push(e.source);
   });
 
-  // Longest-path layering: a node's layer = deepest parent + 1
+  // Longest-path layering so we can order the spiral by reasoning depth
   const layerOf = new Map<string, number>();
   const visiting = new Set<string>();
   const computeLayer = (id: string): number => {
@@ -185,33 +185,43 @@ function ensurePositions(nodes: FlowNode[], edges: FlowEdge[] = []) {
   };
   nodes.forEach(n => computeLayer(n.id));
 
-  // Group node ids by layer
-  const byLayer = new Map<number, string[]>();
-  nodes.forEach(n => {
-    const L = layerOf.get(n.id) || 0;
-    if (!byLayer.has(L)) byLayer.set(L, []);
-    byLayer.get(L)!.push(n.id);
-  });
+  // Sort by depth so the spiral grows outward from the problem
+  const sorted = [...nodes].sort((a, b) => (layerOf.get(a.id) || 0) - (layerOf.get(b.id) || 0));
 
   const pos = new Map<string, { x: number; y: number }>();
-  const COL_W = 340;   // horizontal spacing between layers
-  const ROW_H = 220;   // vertical spacing within a layer
+  const goldenAngle = Math.PI * (3 - Math.sqrt(5)); // ~2.399 rad
+  const SPACING = 95;
 
-  byLayer.forEach((ids, L) => {
-    const count = ids.length;
-    // Vertically center the column: first node offset so the group is centered
-    const yOffset = ((count - 1) * ROW_H) / 2;
-    ids.forEach((id, i) => {
-      pos.set(id, { x: L * COL_W, y: i * ROW_H - yOffset });
+  sorted.forEach((n, i) => {
+    if (i === 0) {
+      pos.set(n.id, { x: 0, y: 0 });
+      return;
+    }
+    const radius = SPACING * Math.sqrt(i);
+    const angle = i * goldenAngle;
+    pos.set(n.id, {
+      x: radius * Math.cos(angle),
+      y: radius * Math.sin(angle),
     });
   });
+
+  // Normalize so the cluster is centered and fits a ~600px box
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+  nodes.forEach(n => {
+    const p = pos.get(n.id)!;
+    minX = Math.min(minX, p.x); maxX = Math.max(maxX, p.x);
+    minY = Math.min(minY, p.y); maxY = Math.max(maxY, p.y);
+  });
+  const cx = (minX + maxX) / 2;
+  const cy = (minY + maxY) / 2;
+  const scale = 300 / Math.max(1, Math.max(maxX - minX, maxY - minY));
 
   return nodes.map(node => {
     if (node.position && typeof node.position.x === 'number' && typeof node.position.y === 'number') {
       return node;
     }
-    const p = pos.get(node.id) || { x: 0, y: 0 };
-    return { ...node, position: p };
+    const p = pos.get(node.id)!;
+    return { ...node, position: { x: (p.x - cx) * scale, y: (p.y - cy) * scale } };
   });
 }
 
